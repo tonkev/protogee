@@ -1,0 +1,9 @@
+[submodule "tinyobjloader"]
+	path = tinyobjloader
+	url = https://github.com/syoyo/tinyobjloader
+[submodule "RadeonRays_SDK"]
+	path = RadeonRays_SDK
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/RadeonRays_SDK/
+[submodule "inih"]
+	path = inih
+	url = https://github.com/benhoyt/inih
