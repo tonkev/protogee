@@ -9,10 +9,10 @@ float pitch;
 float deltaTime;
 float lastFrame;
 float speed;
-bool w, a, s ,d;
+bool w, a, s ,d, c;
+bool mouseRel;
 
 bool Camera::init(INIReader config){
-	//SDL_SetRelativeMouseMode(SDL_TRUE);
 
   speed = config.GetReal("camera", "speed", 2.5f);
 
@@ -31,6 +31,9 @@ w = false;
 a = false;
 s = false;
 d = false;
+c = false;
+
+mouseRel = false;
 	
   front.x = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
   front.y = sin(glm::radians(pitch));
@@ -56,6 +59,9 @@ void Camera::processSDLEvent(SDL_Event event){
         case SDLK_d:
           d = true;
           break;
+        case SDLK_c:
+          c = true;
+          break;
       }
       break;
     case SDL_KEYUP:
@@ -71,6 +77,9 @@ void Camera::processSDLEvent(SDL_Event event){
           break;
         case SDLK_d:
           d = false;
+          break;
+        case SDLK_c:
+          c = false;
           break;
       }
       break;
@@ -100,6 +109,16 @@ void Camera::update(){
 		if(s) position -= step * front;
 		if(a) position -= glm::normalize(glm::cross(front, up)) * step;
 		if(d) position += glm::normalize(glm::cross(front, up)) * step;
+		if(c){
+			if(mouseRel){
+				SDL_SetRelativeMouseMode(SDL_FALSE);
+				mouseRel = false;
+			}else{
+				SDL_SetRelativeMouseMode(SDL_TRUE);
+				mouseRel = true;
+			}
+			c = false;
+		}
 }
 
 glm::mat4 Camera::getViewMatrix(){

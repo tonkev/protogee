@@ -31,14 +31,14 @@ __kernel void pre_rays(read_only image2d_t positions, constant light* vpls, cons
 	rays[i].d = (float4) (normalize(pos - vpls[v].position), 0.f);
 	rays[i].doBackfaceCulling = 0;
 }
-__kernel void post_rays(constant ray* rays, constant intersection* isects, const uint noOfVPLS, const uint pwidth, write_only image2d_array_t vpl_masks){
+__kernel void post_rays(constant ray* rays, /*constant intersection* isects*/ constant int* occlus, const uint noOfVPLS, const uint pwidth, write_only image2d_array_t vpl_masks){
 	const uint x = get_global_id(0);
 	const uint y = get_global_id(1);
 	const uint v = get_global_id(2);
 	const int i = ((y*pwidth + x) * noOfVPLS) + v;
 	//long expected = rays[i].o.w;
 	//long actual = isects[i].uvwt.w;
-	if(isects[i].prim_id == -1)
+	if(occlus[i] == -1)
 		write_imagef(vpl_masks, (int4)(x, y, v, 0), (float4)(1));
 	else
 		write_imagef(vpl_masks, (int4)(x, y, v, 0), (float4)(0));

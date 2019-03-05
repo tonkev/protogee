@@ -4,7 +4,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <GL/glew.h>
-#include <glm/glm.hpp>
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
@@ -29,6 +28,10 @@ struct Material {
   unsigned int specular_texture;
   unsigned int bump_texture;
   unsigned int mask_texture;
+  SDL_Surface* diffuse_surface;
+  SDL_Surface* specular_surface;
+  SDL_Surface* bump_surface;
+  SDL_Surface* mask_surface;
 };
 
 struct Mesh {
@@ -37,10 +40,12 @@ struct Mesh {
   unsigned int count;
   Material* material;
   RR::Shape* shape;
+  std::vector<Vertex> vertices;
 };
 
 std::vector<Material> materials;
 std::vector<Mesh> meshes;
+glm::mat4 model;
 
 bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
   std::string filename = config.Get("model", "filename", "INVALID");
@@ -97,7 +102,9 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, material.diffuse_texture);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, surface->w, surface->h, 0, GL_RGB, GL_UNSIGNED_BYTE, surface->pixels);
-  		glGenerateMipmap(GL_TEXTURE_2D);
+	  glGenerateMipmap(GL_TEXTURE_2D);
+	
+  	  material.diffuse_surface = surface; 
     }
 
     material.specular_texture = 0;
@@ -112,6 +119,8 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
       glBindTexture(GL_TEXTURE_2D, material.specular_texture);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, surface->w, surface->h, 0, GL_RED, GL_UNSIGNED_BYTE, surface->pixels);
   		glGenerateMipmap(GL_TEXTURE_2D);
+  		
+  	  material.specular_surface = surface;
     }
 
     material.bump_texture = 0;
@@ -126,6 +135,8 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
       glBindTexture(GL_TEXTURE_2D, material.bump_texture);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, surface->w, surface->h, 0, GL_RED, GL_UNSIGNED_BYTE, surface->pixels);
   		glGenerateMipmap(GL_TEXTURE_2D);
+
+  	  material.bump_surface = surface;
     }
 
     material.mask_texture = 0;
@@ -140,15 +151,23 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
       glBindTexture(GL_TEXTURE_2D, material.mask_texture);
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, surface->w, surface->h, 0, GL_RED, GL_UNSIGNED_BYTE, surface->pixels);
   		glGenerateMipmap(GL_TEXTURE_2D);
+
+  		
+  	  material.mask_surface = surface;
     }
 
     materials.push_back(material);
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
+  float scale = config.GetReal("model", "scale", 1.f);
+  model = glm::mat4(1.0f);
+  model = glm::scale(model, glm::vec3(scale));
+  RR::matrix rModel = RR::scale(RR::float3(scale, scale, scale));
+  RR::matrix rModelInv = RR::inverse(rModel);
+
   for(const auto& shape : shapes){
     Mesh mesh;
-    std::vector<Vertex> vertices;
 
     for(const auto& index : shape.mesh.indices) {
       Vertex vertex;
@@ -169,10 +188,10 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
           attrib.texcoords[2 * index.texcoord_index + 0],
           1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
         );
-      vertices.push_back(vertex);
+      mesh.vertices.push_back(vertex);
     }
 
-    mesh.count = vertices.size();
+    mesh.count = mesh.vertices.size();
     mesh.material = &(materials[shape.mesh.material_ids[0]]);
 
     glGenBuffers(1, &mesh.vbo);
@@ -181,7 +200,7 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
     glBindVertexArray(mesh.vao);
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo);
 
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, mesh.count * sizeof(Vertex), mesh.vertices.data(), GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
@@ -194,18 +213,20 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
 
     glBindVertexArray(0);
 
-    int indices[vertices.size()];
-    for(int i = 0; i < vertices.size(); ++i){
+    int indices[mesh.vertices.size()];
+    for(int i = 0; i < mesh.vertices.size(); ++i){
       indices[i] = i;
     }
 
-    int numfaces = vertices.size()/3;
+    int numfaces = mesh.vertices.size()/3;
     int numfaceverts[numfaces];
     for(int i = 0; i < numfaces; ++i){
       numfaceverts[i] = 3;
     }
 
-    mesh.shape = intersectionApi->CreateMesh((const float*)vertices.data(), mesh.count, sizeof(Vertex), indices, 0, numfaceverts, numfaces);
+    mesh.shape = intersectionApi->CreateMesh((const float*)mesh.vertices.data(), mesh.count, sizeof(Vertex), indices, 0, numfaceverts, numfaces);
+	mesh.shape->SetTransform(rModel, rModelInv);
+	mesh.shape->SetId(meshes.size());
     intersectionApi->AttachShape(mesh.shape);
 
     meshes.push_back(mesh);
@@ -217,6 +238,7 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
 
 void Model::draw(unsigned int shader){
   for(const auto& mesh : meshes){
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, &model[0][0]);
     glUniform3fv(glGetUniformLocation(shader, "DiffuseColor"), 1, &(mesh.material->diffuse)[0]);
     glUniform3fv(glGetUniformLocation(shader, "SpecularColor"), 1, &(mesh.material->specular)[0]);
     glUniform1f(glGetUniformLocation(shader, "shininess"), mesh.material->shininess);
@@ -244,4 +266,64 @@ void Model::draw(unsigned int shader){
 
 void Model::destroy(){
   IMG_Quit();
+}
+
+glm::mat4 Model::getModelMatrix(){
+	return model;
+}
+
+//http://sdl.beuc.net/sdl.wiki/Pixel_Access
+Uint32 getpixel(SDL_Surface *surface, int x, int y)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to retrieve */
+    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) {
+    case 1:
+        return *p;
+        break;
+
+    case 2:
+        return *(Uint16 *)p;
+        break;
+
+    case 3:
+        if(SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            return p[0] << 16 | p[1] << 8 | p[2];
+        else
+            return p[0] | p[1] << 8 | p[2] << 16;
+        break;
+
+    case 4:
+        return *(Uint32 *)p;
+        break;
+
+    default:
+        return 0;       /* shouldn't happen, but avoids warnings */
+    }
+}
+
+glm::vec3 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x, float y){
+	Mesh mesh = meshes[mesh_id];
+	Vertex v0 = mesh.vertices[face_id * 3 + 0];
+	Vertex v1 = mesh.vertices[face_id * 3 + 1];
+	Vertex v2 = mesh.vertices[face_id * 3 + 2];
+	glm::vec3 diffuse;
+	if(mesh.material->diffuse_texture){
+		int u, v;
+		u = (1-x-y)*v0.texCoord.x + x*v1.texCoord.x + y*v2.texCoord.x;
+		v = (1-x-y)*v0.texCoord.y + x*v1.texCoord.y + y*v2.texCoord.y;
+		//Uint8* pixel = (Uint8*)mesh.material->diffuse_surface->pixels + v * mesh.material->diffuse_surface->pitch + u * 3;
+		//glm::vec3 diffuse = glm::vec3(pixel[0]/255.f, pixel[1]/255.f, pixel[2]/255.f);
+		Uint32 pixel = getpixel(mesh.material->diffuse_surface, u, v);
+		Uint8 rgb[3];
+		
+		SDL_GetRGB(pixel, mesh.material->diffuse_surface->format, &rgb[0], &rgb[1], &rgb[2]);
+		diffuse = glm::vec3(rgb[0], rgb[1], rgb[2]) / 255.f;
+	}else{
+		diffuse = mesh.material->diffuse;
+		//std::cout << "HERE" << std::endl;
+	}
+	return diffuse;
 }

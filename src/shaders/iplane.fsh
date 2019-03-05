@@ -13,8 +13,8 @@ struct Light {
   vec3 diffuse;
   vec3 specular;
 };
-#define NO_OF_VPLS 128
-uniform Light vpls[NO_OF_VPLS];
+#define MAX_NO_OF_VPLS 128
+uniform Light vpls[MAX_NO_OF_VPLS];
 uniform sampler2DArray vplMasks;
 
 uniform vec3 viewPos;
@@ -30,17 +30,20 @@ void main(){
   vec3 specular = vec3(0);
 
   for(int i = 0; i < noOfVPLs; ++i){
-    float visibility = texture(vplMasks, vec3(TexCoords, i)).r/noOfVPLs;
+  //int i = 3;{
+    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
+    float attenuation = 1 / (1 + distance(vpls[i].position, fragPos));
 
     vec3 lightDir = normalize(vpls[i].position - fragPos);
     float diff = max(dot(norm, lightDir), 0.0);
-    diffuse += diff * vpls[i].diffuse * visibility;
+    diffuse += diff * vpls[i].diffuse * visibility * attenuation;
 
     vec3 reflectDir = reflect(-lightDir, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    specular += shininess * spec * vpls[i].specular * visibility;
+    //specular += shininess * spec * vpls[i].specular * visibility * attenuation;
+  	
   }
 
-  FragColor = vec4((diffuse + specular) * texture(gAlbedo, TexCoords).xyz, 1);
-  //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 1)).r, 0, 0.2, 1);
+  FragColor = vec4(min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz, 1);
+  //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 0)).r, 0, 0.2, 1);
 }
