@@ -1,5 +1,5 @@
 #version 330 core
-out vec4 FragColor;
+layout (location = 0) out vec3 gIndirect;
 
 in vec2 TexCoords;
 
@@ -32,7 +32,8 @@ void main(){
   for(int i = 0; i < noOfVPLs; ++i){
   //int i = 3;{
     float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
-    float attenuation = 1 / (1 + distance(vpls[i].position, fragPos));
+    float dist = distance(vpls[i].position, fragPos);
+    float attenuation = 1 / (1 + dist * dist);
 
     vec3 lightDir = normalize(vpls[i].position - fragPos);
     float diff = max(dot(norm, lightDir), 0.0);
@@ -44,6 +45,6 @@ void main(){
   	
   }
 
-  FragColor = vec4(min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz, 1);
+  gIndirect = min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz;
   //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 0)).r, 0, 0.2, 1);
 }

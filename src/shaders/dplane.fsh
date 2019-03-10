@@ -1,5 +1,5 @@
 #version 330 core
-out vec4 FragColor;
+layout (location = 0) out vec3 gDirect;
 
 in vec2 TexCoords;
 
@@ -39,8 +39,11 @@ void main(){
   float closestDepth = texture(dMap, fragToLight).r;
   closestDepth *= far_plane;
   float currentDepth = length(fragToLight);
-  float bias = 1;
+  float bias = 0.05;
   float shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
 
-  FragColor = vec4((diffuse + specular) * texture(gAlbedo, TexCoords).xyz, 1);
+  float dist = distance(light.position, fragPos);
+  float attenuation = 1 / (1 + dist * dist);
+
+  gDirect = (diffuse + specular) * shadow * attenuation * texture(gAlbedo, TexCoords).xyz;
 }
