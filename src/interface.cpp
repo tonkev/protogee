@@ -56,7 +56,8 @@ void interface::loop(){
           online = false;
           break;
       }
-			Camera::processSDLEvent(event);
+	Camera::processSDLEvent(event);
+	renderer::processSDLEvent(event);
     }
 		Camera::update();
 		renderer::update();
