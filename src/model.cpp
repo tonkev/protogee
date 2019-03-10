@@ -330,3 +330,25 @@ glm::vec3 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x,
 	}
 	return diffuse;
 }
+
+glm::vec3 Model::getSpecular(unsigned int mesh_id, unsigned int face_id, float x, float y){
+	Mesh mesh = meshes[mesh_id];
+	Vertex v0 = mesh.vertices[face_id * 3 + 0];
+	Vertex v1 = mesh.vertices[face_id * 3 + 1];
+	Vertex v2 = mesh.vertices[face_id * 3 + 2];
+	glm::vec3 specular;
+	if(mesh.material->specular_texture){
+		int u, v;
+		u = (1-x-y)*v0.texCoord.x + x*v1.texCoord.x + y*v2.texCoord.x;
+		v = (1-x-y)*v0.texCoord.y + x*v1.texCoord.y + y*v2.texCoord.y;
+		Uint32 pixel = getpixel(mesh.material->specular_surface, u, v);
+		Uint8 rgb[3];
+		
+		SDL_GetRGB(pixel, mesh.material->specular_surface->format, &rgb[0], &rgb[1], &rgb[2]);
+		specular = glm::vec3(rgb[0], rgb[1], rgb[2]) / 255.f;
+	}else{
+		specular = mesh.material->specular;
+		//std::cout << "HERE" << std::endl;
+	}
+	return specular;
+}

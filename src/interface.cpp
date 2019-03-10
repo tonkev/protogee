@@ -11,6 +11,8 @@ SDL_Window* window;
 SDL_GLContext glcontext;
 int width;
 int height;
+float deltaTime;
+float lastFrame;
 
 bool interface::init(INIReader config){
 	if(SDL_Init(SDL_INIT_VIDEO) < 0){
@@ -42,6 +44,9 @@ bool interface::init(INIReader config){
 		std::cerr << "Failed to accelerate GLContext: %s" << SDL_GetError() << std::endl;
 		return false;
 	}
+	
+  deltaTime = 0.0f;
+  lastFrame = 0.0f;
 
   return true;
 }
@@ -59,8 +64,11 @@ void interface::loop(){
 	Camera::processSDLEvent(event);
 	renderer::processSDLEvent(event);
     }
-		Camera::update();
-		renderer::update();
+	float currentFrame = SDL_GetTicks();
+	deltaTime = (currentFrame - lastFrame) / 1000.0f;
+	lastFrame = currentFrame;
+	Camera::update(deltaTime);
+	renderer::update(deltaTime);
     SDL_GL_SwapWindow(window);
   }
 }

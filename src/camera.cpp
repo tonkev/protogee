@@ -6,8 +6,6 @@ glm::vec3 front;
 glm::vec3 up;
 float yaw;
 float pitch;
-float deltaTime;
-float lastFrame;
 float speed;
 bool w, a, s ,d, c;
 bool mouseRel;
@@ -24,8 +22,6 @@ bool Camera::init(INIReader config){
   yaw = config.GetReal("camera", "yaw", -90.f);
   pitch = 0.0f;
 
-  deltaTime = 0.0f;
-  lastFrame = 0.0f;
 
 w = false;
 a = false;
@@ -97,10 +93,7 @@ void Camera::processSDLEvent(SDL_Event event){
   }
 }
 
-void Camera::update(){
-		float currentFrame = SDL_GetTicks();
-		deltaTime = (currentFrame - lastFrame) / 1000.0f;
-		lastFrame = currentFrame;
+void Camera::update(float deltaTime){
 
     //std::cout << 1/deltaTime << std::endl;
 

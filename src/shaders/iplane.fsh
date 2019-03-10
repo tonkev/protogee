@@ -14,6 +14,7 @@ struct Light {
   vec3 specular;
 };
 #define MAX_NO_OF_VPLS 128
+uniform Light pl;
 uniform Light vpls[MAX_NO_OF_VPLS];
 uniform sampler2DArray vplMasks;
 
@@ -33,18 +34,19 @@ void main(){
   //int i = 3;{
     float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
     float dist = distance(vpls[i].position, fragPos);
+    dist += distance(pl.position, vpls[i].position);
     float attenuation = 1 / (1 + dist * dist);
 
     vec3 lightDir = normalize(vpls[i].position - fragPos);
     float diff = max(dot(norm, lightDir), 0.0);
-    diffuse += diff * vpls[i].diffuse * visibility * attenuation;
+    diffuse += diff * vpls[i].diffuse * pl.diffuse * visibility * attenuation;
 
     vec3 reflectDir = reflect(-lightDir, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    //specular += shininess * spec * vpls[i].specular * visibility * attenuation;
+    specular += shininess * spec * vpls[i].specular * pl.specular * visibility * attenuation;
   	
   }
 
-  gIndirect = min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz;
+  gIndirect = min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz / noOfVPLs;
   //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 0)).r, 0, 0.2, 1);
 }

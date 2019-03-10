@@ -12,7 +12,7 @@ namespace renderer{
   RadeonRays::IntersectionApi* getIntersectionApi();
   glm::vec3 randomDirection(unsigned int);
   void processSDLEvent(SDL_Event);
-  void update();
+  void update(float);
   void destroy();
 }
 

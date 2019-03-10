@@ -10,7 +10,7 @@
 namespace Camera{
   bool init(INIReader);
   void processSDLEvent(SDL_Event event);
-  void update();
+  void update(float);
   glm::mat4 getViewMatrix();
   glm::vec3 getPosition();
 };

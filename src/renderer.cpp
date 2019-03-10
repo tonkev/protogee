@@ -87,19 +87,73 @@ float rDelta;
 unsigned int dBuffer, iBuffer, dColor, iColor;
 unsigned int discShader, discBuffer, discIndirect1;
 
+float lightSpeed;
+bool i = false;
+bool j = false;
+bool k = false;
+bool l = false;
+bool u = false;
+bool o = false;
 bool directEnabled = true;
 bool indirectEnabled = true;
+bool vplDebugEnabled = false;
+bool vplUpdated = true;
 
 void renderer::processSDLEvent(SDL_Event event){
-  if(event.type == SDL_KEYDOWN){
-    switch(event.key.keysym.sym){
-      case SDLK_1:
-        directEnabled = !directEnabled;
-        break;
-      case SDLK_2:
-        indirectEnabled = !indirectEnabled;
-        break;
-    }
+  switch(event.type){
+	  case SDL_KEYDOWN:
+	    switch(event.key.keysym.sym){
+	      case SDLK_1:
+	        directEnabled = !directEnabled;
+	        break;
+	      case SDLK_2:
+	        indirectEnabled = !indirectEnabled;
+	        break;
+	      case SDLK_3:
+	        vplDebugEnabled = !vplDebugEnabled;
+	        break;
+	      case SDLK_i:
+	        i = true;
+	        break;
+	      case SDLK_j:
+	        j = true;
+	        break;
+	      case SDLK_k:
+	        k = true;
+	        break;
+	      case SDLK_l:
+	        l = true;
+	        break;
+	      case SDLK_u:
+	        u = true;
+	        break;
+	      case SDLK_o:
+	        o = true;
+	        break;
+	    }
+	    break;
+	 case SDL_KEYUP:
+       switch(event.key.keysym.sym){
+		  case SDLK_i:
+ 	        i = false;
+ 	        break;
+ 	      case SDLK_j:
+ 	        j = false;
+ 	        break;
+ 	      case SDLK_k:
+ 	        k = false;
+ 	        break;
+ 	      case SDLK_l:
+ 	        l = false;
+ 	        break;
+ 	      case SDLK_u:
+ 	        u = false;
+ 	        break;
+ 	      case SDLK_o:
+ 	        o = false;
+ 	        break;
+       }
+       break;
   }
 }
 
@@ -472,6 +526,8 @@ bool renderer::init(INIReader config){
    
    glBindTexture(GL_TEXTURE_2D, 0);
    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+   
+  lightSpeed = config.GetReal("renderer", "lightSpeed", 1.f);
 
   glClearColor(0.f, 0.f, 0.f, 1.0f);
 
@@ -482,7 +538,16 @@ RR::IntersectionApi* renderer::getIntersectionApi(){
   return intersectionApi;
 }
 
-void renderer::update(){
+void renderer::update(float deltaTime){
+	float step = lightSpeed * deltaTime;
+	if(i) pl.position += step * glm::vec3(0, 1, 0);
+	if(k) pl.position -= step * glm::vec3(0, 1, 0);
+	if(j) pl.position -= step * glm::vec3(1, 0, 0);
+	if(l) pl.position += step * glm::vec3(1, 0, 0);
+	if(o) pl.position -= step * glm::vec3(0, 0, 1);
+	if(u) pl.position += step * glm::vec3(0, 0, 1);
+	if(i || k || j || l || o || u) vplUpdated = true;
+
   if(indirectEnabled){
 	  if(vpls.size() > 0){
 		  for(int i = 0; i < vpls.size(); ++i){
@@ -568,11 +633,12 @@ void renderer::update(){
 	          pl.position.z + distance * ray.d.z
 	        );
 	        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.specular = Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
 	        //vpl.diffuse = glm::vec3(vpl.diffuse.x * pl.diffuse.x, vpl.diffuse.y * pl.diffuse.y, vpl.diffuse.z * pl.diffuse.z) / (1 + distance * distance);
-	        vpl.diffuse = (vpl.diffuse * pl.diffuse / (1 + distance * distance)) / (float)noOfVPLS;
+	        //vpl.diffuse = vpl.diffuse * pl.diffuse / (float)noOfVPLS;
 	        //vpl.diffuse = pl.diffuse / (1 + distance);
 	        //std::cout << vpl.diffuse.x << ", " << vpl.diffuse.y << ", " << vpl.diffuse.z << std::endl;
-	        vpl.specular = pl.specular / (1 + distance * distance);
+	        //vpl.specular = pl.specular;
 	        //vpl.specular = glm::vec3(0);
 	        vpls.push_back(vpl);
 	        
@@ -581,24 +647,29 @@ void renderer::update(){
 	
 	    clEnqueueWriteBuffer(clQueue, clVPLs, CL_TRUE, 0, vpls.size() * sizeof(Light), vpls.data(), 0, NULL, NULL);
 	
+		vplUpdated = true;
 		
-		std::vector<Light> vpls2;
-		for(int i = 0; i < vpls.size(); ++i){
-			Light vpl;
-			vpl.position = pl.position;
-			vpls2.push_back(vpl);
-			vpls2.push_back(vpls[i]);		
-		}
-	
-	    glGenBuffers(1, &vpl_vbo);
-	    glGenVertexArrays(1, &vpl_vao);
-	    glBindVertexArray(vpl_vao);
-	    glBindBuffer(GL_ARRAY_BUFFER, vpl_vbo);
-	    glBufferData(GL_ARRAY_BUFFER, vpls2.size() * sizeof(Light), vpls2.data(), GL_DYNAMIC_DRAW);
-	    glEnableVertexAttribArray(0);
-	    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Light), (void*)offsetof(Light, position));
-	    glBindVertexArray(0);
 	  }
+  }
+
+  if(vplDebugEnabled && vplUpdated){
+  	std::vector<Light> vpls2;
+	for(int i = 0; i < vpls.size(); ++i){
+		Light vpl;
+		vpl.position = pl.position;
+		vpls2.push_back(vpl);
+		vpls2.push_back(vpls[i]);		
+	}
+	
+   glGenBuffers(1, &vpl_vbo);
+   glGenVertexArrays(1, &vpl_vao);
+   glBindVertexArray(vpl_vao);
+   glBindBuffer(GL_ARRAY_BUFFER, vpl_vbo);
+   glBufferData(GL_ARRAY_BUFFER, vpls2.size() * sizeof(Light), vpls2.data(), GL_DYNAMIC_DRAW);
+   glEnableVertexAttribArray(0);
+   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Light), (void*)offsetof(Light, position));
+   glBindVertexArray(0);
+   vplUpdated = false;
   }
 
   glEnable(GL_DEPTH_TEST);
@@ -694,6 +765,9 @@ void renderer::update(){
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gNormal"), 1);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gAlbedo"), 2);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gSpecular"), 3);
+	  glUniform3fv(glGetUniformLocation(iPlaneShader, "pl.position"), 1, &pl.position[0]);
+	  glUniform3fv(glGetUniformLocation(iPlaneShader, "pl.diffuse"), 1, &pl.diffuse[0]);
+	  glUniform3fv(glGetUniformLocation(iPlaneShader, "pl.specular"), 1, &pl.specular[0]);
 	  for(int i = 0; i < noOfVPLS; ++i){
 	    glUniform3fv(glGetUniformLocation(iPlaneShader, ("vpls[" + std::to_string(i) + "].position").c_str()), 1, &vpls[i].position[0]);
 	    glUniform3fv(glGetUniformLocation(iPlaneShader, ("vpls[" + std::to_string(i) + "].diffuse").c_str()), 1, &vpls[i].diffuse[0]);
@@ -738,14 +812,15 @@ void renderer::update(){
   glUniform1i(glGetUniformLocation(discShader, "pass"), 2);
   glBindTexture(GL_TEXTURE_2D, discIndirect1);
   glDrawArrays(GL_TRIANGLES, 0, 6);
-  
-  glUseProgram(vpl_shader);
-  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "model"), 1, GL_FALSE, &Model::getModelMatrix()[0][0]);
-  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "view"), 1, GL_FALSE, &view[0][0]);
-  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "projection"), 1, GL_FALSE, &projection[0][0]);
-  glBindVertexArray(vpl_vao);
-  //glDrawArrays(GL_LINES, 0, vpls.size() * 2);
-  
+
+  if(vplDebugEnabled){
+	  glUseProgram(vpl_shader);
+	  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "model"), 1, GL_FALSE, &Model::getModelMatrix()[0][0]);
+	  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "view"), 1, GL_FALSE, &view[0][0]);
+	  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "projection"), 1, GL_FALSE, &projection[0][0]);
+	  glBindVertexArray(vpl_vao);
+	  glDrawArrays(GL_LINES, 0, vpls.size() * 2);
+  }
 }
 
 void renderer::destroy(){
