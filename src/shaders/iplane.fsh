@@ -21,6 +21,8 @@ uniform sampler2DArray vplMasks;
 uniform vec3 viewPos;
 uniform int noOfVPLs;
 
+uniform int debugVPLI = -1;
+
 void main(){
   vec3 norm = normalize(texture(gNormal, TexCoords).xyz);
   vec3 fragPos = texture(gPosition, TexCoords).xyz;
@@ -32,21 +34,24 @@ void main(){
 
   for(int i = 0; i < noOfVPLs; ++i){
   //int i = 3;{
-    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
-    float dist = distance(vpls[i].position, fragPos);
-    dist += distance(pl.position, vpls[i].position);
-    float attenuation = 1 / (1 + dist * dist);
-
-    vec3 lightDir = normalize(vpls[i].position - fragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    diffuse += diff * vpls[i].diffuse * pl.diffuse * visibility * attenuation;
-
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-    specular += shininess * spec * vpls[i].specular * pl.specular * visibility * attenuation;
-  	
+  	if(debugVPLI == -1 || debugVPLI == i){
+	    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
+	    float dist = distance(vpls[i].position, fragPos);
+	    dist += distance(pl.position, vpls[i].position);
+	    float attenuation = 1 / (1 + dist * dist);
+	
+	    vec3 lightDir = normalize(vpls[i].position - fragPos);
+	    float diff = max(dot(norm, lightDir), 0.0);
+	    diffuse += diff * vpls[i].diffuse * pl.diffuse * visibility * attenuation;
+	    //diffuse += vec3(visibility);
+	
+	    vec3 reflectDir = reflect(-lightDir, norm);
+	    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+	    //specular += shininess * spec * vpls[i].specular * pl.specular * visibility * attenuation;
+	  }
   }
 
   gIndirect = min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz / noOfVPLs;
+  //gIndirect = diffuse;
   //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 0)).r, 0, 0.2, 1);
 }

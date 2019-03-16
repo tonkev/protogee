@@ -1,11 +1,13 @@
 #version 330 core
 out vec4 FragColor;
+//layout (location = 1) out vec4 gPrevPosition;
 
 in vec2 TexCoords;
 
 uniform sampler2D gNormal;
 uniform sampler2D gDirect;
 uniform sampler2D gIndirect;
+uniform sampler2D gPositionSanity;
 
 uniform int pass;
 uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
@@ -26,8 +28,9 @@ void main(){
 			vec3 normalXM = texture(gNormal, TexCoords - offsetX).xyz;
 			if(distance(normalXM, normal) < cutoff)
 				indirect += texture(gIndirect, TexCoords - offsetX).rgb * weight[x];
-		FragColor = vec4(indirect, 1);
 		}
+		FragColor = vec4(indirect, 1);
+		//gPrevPosition = vec4(0, 1, 1, 1);//texture(gNormal, TexCoords);
 	}else{
 		vec3 col = vec3(0);
 		if(indirectEnabled){
@@ -47,6 +50,8 @@ void main(){
 			vec3 direct = texture(gDirect, TexCoords).rgb;
 			col += direct;
 		}
+
+		//float sanity = texture(gPositionSanity, TexCoords).w;
 		
 		FragColor = vec4(col, 1);
 	}

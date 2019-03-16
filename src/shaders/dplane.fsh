@@ -33,7 +33,7 @@ void main(){
 
   vec3 reflectDir = reflect(-lightDir, norm);
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-  vec3 specular = shininess * spec * light.diffuse;
+  vec3 specular = vec3(0);//shininess * spec * light.specular;
 
   vec3 fragToLight = fragPos - light.position;
   float closestDepth = texture(dMap, fragToLight).r;

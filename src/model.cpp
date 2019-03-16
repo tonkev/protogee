@@ -46,6 +46,7 @@ struct Mesh {
 std::vector<Material> materials;
 std::vector<Mesh> meshes;
 glm::mat4 model;
+glm::mat4 invPrevModel;
 
 bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
   std::string filename = config.Get("model", "filename", "INVALID");
@@ -163,6 +164,7 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
   float scale = config.GetReal("model", "scale", 1.f);
   model = glm::mat4(1.0f);
   model = glm::scale(model, glm::vec3(scale));
+  invPrevModel = model;
   RR::matrix rModel = RR::scale(RR::float3(scale, scale, scale));
   RR::matrix rModelInv = RR::inverse(rModel);
 
@@ -239,6 +241,7 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
 void Model::draw(unsigned int shader){
   for(const auto& mesh : meshes){
     glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, &model[0][0]);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "invPrevModel"), 1, GL_FALSE, &invPrevModel[0][0]);
     glUniform3fv(glGetUniformLocation(shader, "DiffuseColor"), 1, &(mesh.material->diffuse)[0]);
     glUniform3fv(glGetUniformLocation(shader, "SpecularColor"), 1, &(mesh.material->specular)[0]);
     glUniform1f(glGetUniformLocation(shader, "shininess"), mesh.material->shininess);
