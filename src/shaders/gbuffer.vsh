@@ -12,10 +12,6 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 
-uniform mat4 invPrevModel;
-uniform mat4 invPrevView;
-uniform mat4 invPrevProjection;
-
 void main(){
     FragPos = vec3(model * vec4(aPos, 1.0));
     Normal = transpose(inverse(mat3(model))) * aNormal;

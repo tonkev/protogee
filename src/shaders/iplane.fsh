@@ -21,6 +21,9 @@ uniform sampler2DArray vplMasks;
 uniform vec3 viewPos;
 uniform int noOfVPLs;
 
+uniform int iHistoryIndex;
+uniform int iHistorySize;
+
 uniform int debugVPLI = -1;
 
 void main(){
@@ -32,8 +35,8 @@ void main(){
   vec3 diffuse = vec3(0);
   vec3 specular = vec3(0);
 
-  for(int i = 0; i < noOfVPLs; ++i){
-  //int i = 3;{
+  for(int j = 0; j < noOfVPLs/iHistorySize; ++j){
+	int i = (j * iHistorySize) + iHistoryIndex;
   	if(debugVPLI == -1 || debugVPLI == i){
 	    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
 	    float dist = distance(vpls[i].position, fragPos);
