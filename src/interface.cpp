@@ -34,7 +34,11 @@ bool interface::init(INIReader config){
 	glXGetGPUIDsAMD(1, gpu_ids);
 	glcontext = glXCreateAssociatedContextAMD(gpu_ids[0], NULL);
 	SDL_GL_MakeCurrent(window, glcontext);
-*/	glcontext = SDL_GL_CreateContext(window);
+*/	
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	//SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	glcontext = SDL_GL_CreateContext(window);
 	if(glcontext == NULL){
 		std::cerr << "Failed to create GLContext: %s" << SDL_GetError() << std::endl;
 		return false;

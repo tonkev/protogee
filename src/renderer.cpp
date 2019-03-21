@@ -271,6 +271,7 @@ bool renderer::init(INIReader config){
   //std::cout << clErr << std::endl;
   clQueue = clCreateCommandQueueWithProperties(clContext, devices[0], NULL, NULL);
   intersectionApi = RR::CreateFromOpenClContext(clContext, devices[0], clQueue);
+  //intersectionApi->SetOption("bvh.builder", "sah");
 
   p_width = config.GetInteger("interface", "width", 480);
   p_height = config.GetInteger("interface", "height", 320);
@@ -441,13 +442,13 @@ bool renderer::init(INIReader config){
   interleavedSamplingSize = config.GetInteger("renderer", "interleavedSamplingSize", 5);
   glGenTextures(1, &vMasks);
   glBindTexture(GL_TEXTURE_2D_ARRAY, vMasks);
-  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_R8, p_width, p_height, noOfVPLS, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, p_width, p_height, noOfVPLS, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-  clMasks = clCreateFromGLTexture(clContext, CL_MEM_WRITE_ONLY, GL_TEXTURE_2D_ARRAY, 0, vMasks, NULL);
+  clMasks = clCreateFromGLTexture(clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D_ARRAY, 0, vMasks, NULL);
   glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
   clProgram = clCreateProgramWithSource(clContext, 1, (const char**)&buffer, NULL, NULL);
@@ -462,16 +463,16 @@ bool renderer::init(INIReader config){
    	std::cerr << "Failed to build OpenCL Kernel : " << std::endl << buildLog << std::endl;
    	return false;
   }
-  clPositions = clCreateFromGLTexture(clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gPosition, &clErr);
+  clPositions = clCreateFromGLTexture(clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, gPosition, &clErr);
   //clNormals = clCreateFromGLTexture(clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gNormal, &clErr);
   //clSpeculars = clCreateFromGLTexture(clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gSpecular, &clErr);
   clRays = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(RR::ray), NULL, NULL);
   clVPLs = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * sizeof(Light), NULL, NULL);
-  clIsects = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(RR::Intersection), NULL, NULL);
+  //clIsects = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(RR::Intersection), NULL, NULL);
   clOcclus = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(int), NULL, NULL);
 
   rrRays = RR::CreateFromOpenClBuffer(intersectionApi, clRays);
-  rrIsects = RR::CreateFromOpenClBuffer(intersectionApi, clIsects);
+  //rrIsects = RR::CreateFromOpenClBuffer(intersectionApi, clIsects);
   rrOcclus = RR::CreateFromOpenClBuffer(intersectionApi, clOcclus);
 
   rDelta = config.GetReal("renderer", "rDelta", 0.1f);
@@ -754,7 +755,7 @@ void renderer::update(float deltaTime){
 	  glDrawArrays(GL_TRIANGLES, 0, 6);
   }
 
-  if(indirectEnabled){
+  if(indirectEnabled && vpls.size() > 0){
 	  glFinish();
 	  clEnqueueAcquireGLObjects(clQueue, 1, &clPositions, 0, 0, NULL);
 	  clEnqueueAcquireGLObjects(clQueue, 1, &clMasks, 0, 0, NULL);
@@ -770,6 +771,7 @@ void renderer::update(float deltaTime){
 	  }else{
 	  	realVPP = 1;
 	  }
+	  //std::cout << global_item_size[0] << ", " << global_item_size[1] << ", " << global_item_size[2] << ", " << realVPP << std::endl;
 	  size_t local_item_size[3] = {1, 1, 1};
 	  
 	  clSetKernelArg(clPreRaysKernel, 0, sizeof(cl_mem), (void *)&clPositions);
@@ -784,7 +786,7 @@ void renderer::update(float deltaTime){
 
 	  clEnqueueNDRangeKernel(clQueue, clPreRaysKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
 		  
-	  intersectionApi->QueryOcclusion(rrRays, p_width * p_height * vplsPerPixel, rrOcclus, nullptr, nullptr);
+	  intersectionApi->QueryOcclusion(rrRays, global_item_size[0] * global_item_size[1] * global_item_size[2], rrOcclus, nullptr, nullptr);
 	
 	  clSetKernelArg(clPostRaysKernel, 0, sizeof(cl_mem), (void *)&clRays);
   	  clSetKernelArg(clPostRaysKernel, 1, sizeof(cl_mem), (void *)&clOcclus);
@@ -794,7 +796,8 @@ void renderer::update(float deltaTime){
   	  clSetKernelArg(clPostRaysKernel, 5, sizeof(unsigned int), &interleavedSamplingSize);
 	  clSetKernelArg(clPostRaysKernel, 6, sizeof(unsigned int), &iHistoryIndex);
 	  clSetKernelArg(clPostRaysKernel, 7, sizeof(unsigned int), &iHistorySize);
-  	  clSetKernelArg(clPostRaysKernel, 8, sizeof(cl_mem), (void *)&clMasks);
+	  clSetKernelArg(clPostRaysKernel, 8, sizeof(unsigned int), &noOfVPLS);
+  	  clSetKernelArg(clPostRaysKernel, 9, sizeof(cl_mem), (void *)&clMasks);
 	  	  
 	  clEnqueueNDRangeKernel(clQueue, clPostRaysKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
 

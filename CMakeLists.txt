@@ -16,7 +16,8 @@ set(RR_ENABLE_STATIC ON CACHE BOOL "Create static libraries rather than dynamic"
 set(RR_SHARED_CALC OFF CACHE BOOL "Link Calc(compute abstraction layer) dynamically")
 set(RR_ENABLE_RAYMASK OFF CACHE BOOL "Enable ray masking in intersection kernels")
 set(RR_TUTORIALS OFF CACHE BOOL "Add tutorials projects")
-set(RR_SAFE_MATH OFF CACHE BOOL "use safe math")
+set(RR_SAFE_MATH ON CACHE BOOL "use safe math")
+set(RR_ENABLE_BACKFACE_CULL ON CACHE BOOL "Enable backface culling in intersection kernels")
 
 find_package(OpenCL REQUIRED)
 include_directories(${OpenCL_INCLUDE_DIRS})
