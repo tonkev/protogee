@@ -5,7 +5,6 @@ in vec2 TexCoords;
 
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
-uniform sampler2D gAlbedo;
 uniform sampler2D gSpecular;
 
 uniform samplerCube dMap;
@@ -45,5 +44,5 @@ void main(){
   float dist = distance(light.position, fragPos);
   float attenuation = 1 / (1 + dist * dist);
 
-  gDirect = (diffuse + specular) * shadow * attenuation * texture(gAlbedo, TexCoords).xyz;
+  gDirect = (diffuse + specular) * shadow * attenuation;
 }

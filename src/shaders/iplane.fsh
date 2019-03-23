@@ -5,7 +5,6 @@ in vec2 TexCoords;
 
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
-uniform sampler2D gAlbedo;
 uniform sampler2D gSpecular;
 
 struct Light {
@@ -54,7 +53,5 @@ void main(){
 	  }
   }
 
-  gIndirect = min(diffuse + specular, 1) * texture(gAlbedo, TexCoords).xyz / noOfVPLs;
-  //gIndirect = diffuse;
-  //FragColor = vec4(texture(vplMasks, vec3(TexCoords, 0)).r, 0, 0.2, 1);
+  gIndirect = min(diffuse + specular, 1) / noOfVPLs;
 }

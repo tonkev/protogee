@@ -23,9 +23,9 @@ glm::mat4 invPrevView;
 glm::mat4 invPrevProjection;
 
 struct Light{
-  glm::vec3 position;
-  glm::vec3 diffuse;
-  glm::vec3 specular;
+  glm::vec4 position;
+  glm::vec4 diffuse;
+  glm::vec4 specular;
 };
 
 Light pl;
@@ -67,6 +67,7 @@ cl_mem clOcclus;
 cl_mem clVPLs;
 cl_mem clMasks;
 cl_program clProgram;
+cl_kernel clInitMasksKernel;
 cl_kernel clPreRaysKernel;
 cl_kernel clPostRaysKernel;
 
@@ -89,7 +90,7 @@ unsigned int vplNo;
 float rDelta;
 
 unsigned int dBuffer, iBuffer, dColor, iColor;
-unsigned int discShader, discBuffer, discIndirect1;
+unsigned int discShader, discBuffer1, discBuffer2, discIndirect1, discIndirect2;
 
 float lightSpeed;
 bool i = false;
@@ -281,11 +282,11 @@ bool renderer::init(INIReader config){
   projection = glm::perspective(glm::radians(45.0f), p_width / float(p_height), 0.1f, 10000.0f);
   invPrevProjection = projection;
 
-  pl.position = glm::vec3(0, 10, 0);
+  pl.position = glm::vec4(0, 10, 0, 0);
   pl.position.y = config.GetReal("renderer", "LightY", 1);
   float lightPower = config.GetReal("renderer", "LightPower", 1);
-  pl.diffuse = glm::vec3(lightPower);
-  pl.specular = glm::vec3(lightPower);
+  pl.diffuse = glm::vec4(lightPower);
+  pl.specular = glm::vec4(lightPower);
 
   glGenFramebuffers(1, &dpth_fbo);
   glGenTextures(1, &dpth_cbmp);
@@ -301,12 +302,13 @@ bool renderer::init(INIReader config){
   glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
   dpth_prjctn = glm::perspective(glm::radians(90.0f), dpth_width/(float)dpth_height, 1.0f, dpth_far_plane);
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 1, 0, 0), glm::vec3( 0,-1, 0)));
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3(-1, 0, 0), glm::vec3( 0,-1, 0)));
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 1, 0), glm::vec3( 0, 0, 1)));
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0,-1, 0), glm::vec3( 0, 0,-1)));
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 0, 1), glm::vec3( 0,-1, 0)));
-  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 0,-1), glm::vec3( 0,-1, 0)));
+  glm::vec3 plpos = glm::vec3(pl.position);
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 1, 0, 0), glm::vec3( 0,-1, 0)));
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3(-1, 0, 0), glm::vec3( 0,-1, 0)));
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 1, 0), glm::vec3( 0, 0, 1)));
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0,-1, 0), glm::vec3( 0, 0,-1)));
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0, 1), glm::vec3( 0,-1, 0)));
+  dpth_trnsfrms.push_back(dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0,-1), glm::vec3( 0,-1, 0)));
 
   glBindFramebuffer(GL_FRAMEBUFFER, dpth_fbo);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, dpth_cbmp, 0);
@@ -453,11 +455,13 @@ bool renderer::init(INIReader config){
 
   clProgram = clCreateProgramWithSource(clContext, 1, (const char**)&buffer, NULL, NULL);
   clBuildProgram(clProgram, 1, devices, NULL, NULL, &clErr);
+  cl_int initErr;
+  clInitMasksKernel = clCreateKernel(clProgram, "init_masks", &initErr);
   cl_int preErr;
   clPreRaysKernel = clCreateKernel(clProgram, "pre_rays", &preErr);
   cl_int postErr;
   clPostRaysKernel = clCreateKernel(clProgram, "post_rays", &postErr);
-  if(preErr != 0 || postErr != 0){
+  if(initErr != 0 || preErr != 0 || postErr != 0){
   	char buildLog[LOG_MESSAGE_LENGTH];
   	clGetProgramBuildInfo(clProgram, devices[0], CL_PROGRAM_BUILD_LOG, LOG_MESSAGE_LENGTH, buildLog, NULL);
    	std::cerr << "Failed to build OpenCL Kernel : " << std::endl << buildLog << std::endl;
@@ -514,8 +518,8 @@ bool renderer::init(INIReader config){
   
     glDrawBuffers(1, dAttachments);
 
-  glGenFramebuffers(1, &discBuffer);
-  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer);
+  glGenFramebuffers(1, &discBuffer1);
+  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
   
   glGenTextures(1, &discIndirect1);
   glBindTexture(GL_TEXTURE_2D, discIndirect1);
@@ -525,6 +529,20 @@ bool renderer::init(INIReader config){
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, discIndirect1, 0);
+  
+  glDrawBuffers(1, attachments);
+
+  glGenFramebuffers(1, &discBuffer2);
+  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer2);
+  
+  glGenTextures(1, &discIndirect2);
+  glBindTexture(GL_TEXTURE_2D, discIndirect2);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, p_width, p_height, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, discIndirect2, 0);
   
   glDrawBuffers(1, attachments);
    
@@ -559,12 +577,12 @@ bool renderer::init(INIReader config){
     std::cerr << "Failed to initialise iHistory shader" << std::endl;
     return false;
   }
-/*
-  for(int y = 0; y < 10; ++y)
-  	for(int x = 0; x < 10; ++x)
-  		for(int v = 0; v < 3; ++v)
-  			std::cout << ((y*10 + x) * 3) + v << std::endl;
-*/
+
+  size_t global_item_size[3] = {p_width, p_height, noOfVPLS};
+  size_t local_item_size[3] = {1, 1, 1};
+  clSetKernelArg(clInitMasksKernel, 0, sizeof(cl_mem), (void *)&clMasks);
+  clEnqueueNDRangeKernel(clQueue, clInitMasksKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
+  
   glClearColor(0.f, 0.f, 0.f, 1.0f);
   return true;
 }
@@ -575,12 +593,12 @@ RR::IntersectionApi* renderer::getIntersectionApi(){
 
 void renderer::update(float deltaTime){
 	float step = lightSpeed * deltaTime;
-	if(i) pl.position += step * glm::vec3(0, 1, 0);
-	if(k) pl.position -= step * glm::vec3(0, 1, 0);
-	if(j) pl.position -= step * glm::vec3(1, 0, 0);
-	if(l) pl.position += step * glm::vec3(1, 0, 0);
-	if(o) pl.position -= step * glm::vec3(0, 0, 1);
-	if(u) pl.position += step * glm::vec3(0, 0, 1);
+	if(i) pl.position += step * glm::vec4(0, 1, 0, 0);
+	if(k) pl.position -= step * glm::vec4(0, 1, 0, 0);
+	if(j) pl.position -= step * glm::vec4(1, 0, 0, 0);
+	if(l) pl.position += step * glm::vec4(1, 0, 0, 0);
+	if(o) pl.position -= step * glm::vec4(0, 0, 1, 0);
+	if(u) pl.position += step * glm::vec4(0, 0, 1, 0);
 	if(i || k || j || l || o || u) vplUpdated = true;
 
   if(indirectEnabled && iHistoryIndex == 0){
@@ -588,7 +606,7 @@ void renderer::update(float deltaTime){
 		  for(int i = 0; i < vpls.size(); ++i){
 		  	Light vpl = vpls[i];
 		  	RR::ray r;
-		  	glm::vec3 diff = pl.position - vpl.position;
+		  	glm::vec4 diff = pl.position - vpl.position;
 		  	r.o = RR::float4(pl.position.x, pl.position.y, pl.position.z, glm::length(diff) - rDelta);
 		  	diff = glm::normalize(diff);
 		  	r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
@@ -647,13 +665,14 @@ void renderer::update(float deltaTime){
 	      if(isect.shapeid != -1){
 	        Light vpl;
 	        float distance = isect.uvwt.w - rDelta;
-	        vpl.position = glm::vec3(
+	        vpl.position = glm::vec4(
 	          pl.position.x + distance * ray.d.x,
 	          pl.position.y + distance * ray.d.y,
-	          pl.position.z + distance * ray.d.z
+	          pl.position.z + distance * ray.d.z,
+	          0
 	        );
-	        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
-	        vpl.specular = Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.diffuse = glm::vec4(Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y), 0);
+	        vpl.specular = glm::vec4(Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y), 0);
 	        vpls.push_back(vpl);
 	      }
 	    }
@@ -663,6 +682,11 @@ void renderer::update(float deltaTime){
       intersectionApi->DeleteBuffer(ray_buffer);
 	
 	    clEnqueueWriteBuffer(clQueue, clVPLs, CL_TRUE, 0, vpls.size() * sizeof(Light), vpls.data(), 0, NULL, NULL);
+	    //std::cout << vpls.size() << std::endl;
+//	    Light readVPLs[vpls.size()];
+//	    clEnqueueReadBuffer(clQueue, clVPLs, CL_TRUE, 0, vpls.size() * sizeof(Light), readVPLs, 0, NULL, NULL);
+//	    std::cout << readVPLs[1].position.x << ", "  << readVPLs[1].position.y << ", "  << readVPLs[1].position.z << std::endl;
+	    
 	
 		vplUpdated = true;
 		
@@ -690,13 +714,13 @@ void renderer::update(float deltaTime){
   }
 
   if(directEnabled){
-	
-	 dpth_trnsfrms[0] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 1, 0, 0), glm::vec3( 0,-1, 0));
-	 dpth_trnsfrms[1] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3(-1, 0, 0), glm::vec3( 0,-1, 0));
-	 dpth_trnsfrms[2] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 1, 0), glm::vec3( 0, 0, 1));
-	 dpth_trnsfrms[3] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0,-1, 0), glm::vec3( 0, 0,-1));
-	 dpth_trnsfrms[4] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 0, 1), glm::vec3( 0,-1, 0));
-	 dpth_trnsfrms[5] = dpth_prjctn * glm::lookAt(pl.position, pl.position + glm::vec3( 0, 0,-1), glm::vec3( 0,-1, 0));
+	 glm::vec3 plpos = glm::vec3(pl.position.x, pl.position.y, pl.position.z);
+	 dpth_trnsfrms[0] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 1, 0, 0), glm::vec3( 0,-1, 0));
+	 dpth_trnsfrms[1] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3(-1, 0, 0), glm::vec3( 0,-1, 0));
+	 dpth_trnsfrms[2] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 1, 0), glm::vec3( 0, 0, 1));
+	 dpth_trnsfrms[3] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0,-1, 0), glm::vec3( 0, 0,-1));
+	 dpth_trnsfrms[4] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0, 1), glm::vec3( 0,-1, 0));
+	 dpth_trnsfrms[5] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0,-1), glm::vec3( 0,-1, 0));
 
 	  glViewport(0, 0, dpth_width, dpth_height);
 	  glBindFramebuffer(GL_FRAMEBUFFER, dpth_fbo);
@@ -763,6 +787,7 @@ void renderer::update(float deltaTime){
 	  float realVPP = vpls.size()/(float)(interleavedSamplingSize*interleavedSamplingSize*iHistorySize);
 	  unsigned int vplsPerPixel = realVPP;
 	  size_t global_item_size[3] = {p_width, p_height, vplsPerPixel};
+	  
 	  if(realVPP < 1){
 	  	global_item_size[0] = p_width * realVPP;
 	  	global_item_size[1] = p_height * realVPP;
@@ -771,6 +796,7 @@ void renderer::update(float deltaTime){
 	  }else{
 	  	realVPP = 1;
 	  }
+	  //std::cout << vpls[1].position.x << ", " << vpls[1].position.y << ", " << vpls[1].position.z << std::endl;
 	  //std::cout << global_item_size[0] << ", " << global_item_size[1] << ", " << global_item_size[2] << ", " << realVPP << std::endl;
 	  size_t local_item_size[3] = {1, 1, 1};
 	  
@@ -796,7 +822,7 @@ void renderer::update(float deltaTime){
   	  clSetKernelArg(clPostRaysKernel, 5, sizeof(unsigned int), &interleavedSamplingSize);
 	  clSetKernelArg(clPostRaysKernel, 6, sizeof(unsigned int), &iHistoryIndex);
 	  clSetKernelArg(clPostRaysKernel, 7, sizeof(unsigned int), &iHistorySize);
-	  clSetKernelArg(clPostRaysKernel, 8, sizeof(unsigned int), &noOfVPLS);
+	  clSetKernelArg(clPostRaysKernel, 8, sizeof(cl_mem), (void *)&clVPLs);
   	  clSetKernelArg(clPostRaysKernel, 9, sizeof(cl_mem), (void *)&clMasks);
 	  	  
 	  clEnqueueNDRangeKernel(clQueue, clPostRaysKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
@@ -812,7 +838,6 @@ void renderer::update(float deltaTime){
 	  glUniform3fv(glGetUniformLocation(iPlaneShader, "viewPos"), 1, &position[0]);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gPosition"), 0);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gNormal"), 1);
-	  glUniform1i(glGetUniformLocation(iPlaneShader, "gAlbedo"), 2);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gSpecular"), 3);
 	  glUniform3fv(glGetUniformLocation(iPlaneShader, "pl.position"), 1, &pl.position[0]);
 	  glUniform3fv(glGetUniformLocation(iPlaneShader, "pl.diffuse"), 1, &pl.diffuse[0]);
@@ -831,8 +856,6 @@ void renderer::update(float deltaTime){
   	  glBindTexture(GL_TEXTURE_2D, gPosition);
   	  glActiveTexture(GL_TEXTURE1);
   	  glBindTexture(GL_TEXTURE_2D, gNormal);
-  	  glActiveTexture(GL_TEXTURE2);
-  	  glBindTexture(GL_TEXTURE_2D, gAlbedo);
   	  glActiveTexture(GL_TEXTURE3);
   	  glBindTexture(GL_TEXTURE_2D, gSpecular);
 	  glActiveTexture(GL_TEXTURE4);
@@ -840,45 +863,34 @@ void renderer::update(float deltaTime){
 	  glBindVertexArray(dPlaneVAO);
 	  glDrawArrays(GL_TRIANGLES, 0, 6);
 
-	  //glBindBuffer(GL_READ_BUFFER, iBuffer);
-  	  //glBindTexture(GL_TEXTURE_2D_ARRAY, iBufferHistory);
-  	  //glCopyTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, -1, -1, p_width, p_height, 0);
-	  //glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  	  iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
-  	  glCopyImageSubData(iColor, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
-  	  glCopyImageSubData(gPosition, GL_TEXTURE_2D, 0, 0, 0, 0, pHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
-  	  viewHistory[iHistoryIndex] = view;
+	  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
+	  glUseProgram(discShader);
+	  glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
+	  glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
+	  glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
+	  glUniform1i(glGetUniformLocation(discShader, "pass"), 1);
+	  glActiveTexture(GL_TEXTURE0);
+	  glBindTexture(GL_TEXTURE_2D, gNormal);
+	  glActiveTexture(GL_TEXTURE1);
+	  glBindTexture(GL_TEXTURE_2D, iColor);
+	  glActiveTexture(GL_TEXTURE2);
+	  glBindTexture(GL_TEXTURE_2D, gPosition);
+	  glBindVertexArray(dPlaneVAO);
+	  glDrawArrays(GL_TRIANGLES, 0, 6);
+	
+	  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer2);
+	  glUniform1i(glGetUniformLocation(discShader, "pass"), 2);
+	  glActiveTexture(GL_TEXTURE1);
+	  glBindTexture(GL_TEXTURE_2D, discIndirect1);
+	  glBindVertexArray(dPlaneVAO);
+	  glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	  iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
+	  glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
+	  glCopyImageSubData(gPosition, GL_TEXTURE_2D, 0, 0, 0, 0, pHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
+	  viewHistory[iHistoryIndex] = view;
   }
-/*
-  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  glDisable(GL_DEPTH_TEST);
-  glUseProgram(discShader);
-  glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
-  glUniform1i(glGetUniformLocation(discShader, "gDirect"), 1);
-  glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 2);
-  glUniform1i(glGetUniformLocation(discShader, "gPositionSanity"), 3);
-  glUniform1i(glGetUniformLocation(discShader, "pass"), 1);
-  glUniform1i(glGetUniformLocation(discShader, "directEnabled"), directEnabled);
-  glUniform1i(glGetUniformLocation(discShader, "indirectEnabled"), indirectEnabled);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, gNormal);
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, dColor);
-  glActiveTexture(GL_TEXTURE2);
-  glBindTexture(GL_TEXTURE_2D, iColor);
-  glActiveTexture(GL_TEXTURE3);
-  glBindTexture(GL_TEXTURE_2D, gPosition);
-  if(indirectEnabled)
-  	glDrawArrays(GL_TRIANGLES, 0, 6);
-  
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  glClear(GL_COLOR_BUFFER_BIT);
-  glUniform1i(glGetUniformLocation(discShader, "pass"), 2);
-  glActiveTexture(GL_TEXTURE2);
-  glBindTexture(GL_TEXTURE_2D, discIndirect1);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
-*/
+
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glUseProgram(iHistoryShader);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -888,15 +900,20 @@ void renderer::update(float deltaTime){
   glUniformMatrix4fv(glGetUniformLocation(iHistoryShader, "projection"), 1, GL_FALSE, &projection[0][0]);
   glUniform1i(glGetUniformLocation(iHistoryShader, "iHistorySize"), iHistorySize);
   glUniform1i(glGetUniformLocation(iHistoryShader, "iHistoryIndex"), iHistoryIndex);
+  glUniform1i(glGetUniformLocation(iHistoryShader, "dEnabled"), directEnabled);
+  glUniform1i(glGetUniformLocation(iHistoryShader, "iEnabled"), indirectEnabled);
   glUniform1i(glGetUniformLocation(iHistoryShader, "iHistory"), 0);
   glUniform1i(glGetUniformLocation(iHistoryShader, "pHistory"), 1);
-  glUniform1i(glGetUniformLocation(iHistoryShader, "iColor"), 2);
+  glUniform1i(glGetUniformLocation(iHistoryShader, "dColor"), 2);
+  glUniform1i(glGetUniformLocation(iHistoryShader, "gAlbedo"), 3);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D_ARRAY, iHistory);
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D_ARRAY, pHistory);
   glActiveTexture(GL_TEXTURE2);
-  glBindTexture(GL_TEXTURE_2D, iColor);
+  glBindTexture(GL_TEXTURE_2D, dColor);
+  glActiveTexture(GL_TEXTURE3);
+  glBindTexture(GL_TEXTURE_2D, gAlbedo);
   glDrawArrays(GL_TRIANGLES, 0, 6);
 
   if(vplDebugEnabled){
