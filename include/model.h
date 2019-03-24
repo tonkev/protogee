@@ -11,8 +11,9 @@ namespace Model{
   void draw(unsigned int);
   void destroy();
   glm::mat4 getModelMatrix();
-  glm::vec3 getDiffuse(unsigned int, unsigned int, float, float);
-  glm::vec3 getSpecular(unsigned int, unsigned int, float, float);
+  glm::vec4 getDiffuse(unsigned int, unsigned int, float, float);
+  glm::vec4 getSpecular(unsigned int, unsigned int, float, float);
+  glm::vec4 getNormal(unsigned int, unsigned int, float, float);
 }
 
 #endif

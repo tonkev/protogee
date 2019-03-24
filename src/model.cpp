@@ -310,12 +310,12 @@ Uint32 getpixel(SDL_Surface *surface, int x, int y)
     }
 }
 
-glm::vec3 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x, float y){
+glm::vec4 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x, float y){
 	Mesh mesh = meshes[mesh_id];
 	Vertex v0 = mesh.vertices[face_id * 3 + 0];
 	Vertex v1 = mesh.vertices[face_id * 3 + 1];
 	Vertex v2 = mesh.vertices[face_id * 3 + 2];
-	glm::vec3 diffuse;
+	glm::vec4 diffuse;
 	if(mesh.material->diffuse_texture){
 		int u, v;
 		u = (1-x-y)*v0.texCoord.x + x*v1.texCoord.x + y*v2.texCoord.x;
@@ -326,20 +326,19 @@ glm::vec3 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x,
 		Uint8 rgb[3];
 		
 		SDL_GetRGB(pixel, mesh.material->diffuse_surface->format, &rgb[0], &rgb[1], &rgb[2]);
-		diffuse = glm::vec3(rgb[0], rgb[1], rgb[2]) / 255.f;
+		diffuse = glm::vec4(rgb[0], rgb[1], rgb[2], 255) / 255.f;
 	}else{
-		diffuse = mesh.material->diffuse;
-		//std::cout << "HERE" << std::endl;
+		diffuse = glm::vec4(mesh.material->diffuse, 1);
 	}
 	return diffuse;
 }
 
-glm::vec3 Model::getSpecular(unsigned int mesh_id, unsigned int face_id, float x, float y){
+glm::vec4 Model::getSpecular(unsigned int mesh_id, unsigned int face_id, float x, float y){
 	Mesh mesh = meshes[mesh_id];
 	Vertex v0 = mesh.vertices[face_id * 3 + 0];
 	Vertex v1 = mesh.vertices[face_id * 3 + 1];
 	Vertex v2 = mesh.vertices[face_id * 3 + 2];
-	glm::vec3 specular;
+	glm::vec4 specular;
 	if(mesh.material->specular_texture){
 		int u, v;
 		u = (1-x-y)*v0.texCoord.x + x*v1.texCoord.x + y*v2.texCoord.x;
@@ -348,10 +347,22 @@ glm::vec3 Model::getSpecular(unsigned int mesh_id, unsigned int face_id, float x
 		Uint8 rgb[3];
 		
 		SDL_GetRGB(pixel, mesh.material->specular_surface->format, &rgb[0], &rgb[1], &rgb[2]);
-		specular = glm::vec3(rgb[0], rgb[1], rgb[2]) / 255.f;
+		specular = glm::vec4(rgb[0], rgb[1], rgb[2], 255) / 255.f;
 	}else{
-		specular = mesh.material->specular;
-		//std::cout << "HERE" << std::endl;
+		specular = glm::vec4(mesh.material->specular, 1);
 	}
 	return specular;
+}
+
+glm::vec4 Model::getNormal(unsigned int mesh_id, unsigned int face_id, float x, float y){
+	Mesh mesh = meshes[mesh_id];
+	Vertex v0 = mesh.vertices[face_id * 3 + 0];
+	Vertex v1 = mesh.vertices[face_id * 3 + 1];
+	Vertex v2 = mesh.vertices[face_id * 3 + 2];
+	glm::vec4 normal;
+	normal.x = (1-x-y)*v0.normal.x + x*v1.normal.x + y*v2.normal.x;
+	normal.y = (1-x-y)*v0.normal.y + x*v1.normal.y + y*v2.normal.y;
+	normal.z = (1-x-y)*v0.normal.z + x*v1.normal.z + y*v2.normal.z;
+	normal.w = 0;
+	return normal;
 }

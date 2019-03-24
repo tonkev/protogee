@@ -34,6 +34,8 @@ void main(){
   vec3 diffuse = vec3(0);
   vec3 specular = vec3(0);
 
+  const float PI = 3.14159;
+
   for(int j = 0; j < noOfVPLs/iHistorySize; ++j){
 	int i = (j * iHistorySize) + iHistoryIndex;
   	if(debugVPLI == -1 || debugVPLI == i){
@@ -43,15 +45,14 @@ void main(){
 	    float attenuation = 1 / (1 + dist * dist);
 	
 	    vec3 lightDir = normalize(vpls[i].position - fragPos);
-	    float diff = max(dot(norm, lightDir), 0.0);
-	    diffuse += diff * vpls[i].diffuse * pl.diffuse * visibility * attenuation;
-	    //diffuse += vec3(visibility);
+	    float diff = max(dot(norm, lightDir), 0);
+	    diffuse += diff * vpls[i].diffuse * visibility * attenuation / PI;
 	
 	    vec3 reflectDir = reflect(-lightDir, norm);
-	    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-	    //specular += shininess * spec * vpls[i].specular * pl.specular * visibility * attenuation;
+	    float spec = pow(max(dot(viewDir, reflectDir), 0), 32);
+	    specular += shininess * spec * vpls[i].specular * visibility * attenuation / PI;
 	  }
   }
 
-  gIndirect = min(diffuse + specular, 1) / noOfVPLs;
+  gIndirect = min(diffuse + specular, 1);
 }

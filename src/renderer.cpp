@@ -282,11 +282,11 @@ bool renderer::init(INIReader config){
   projection = glm::perspective(glm::radians(45.0f), p_width / float(p_height), 0.1f, 10000.0f);
   invPrevProjection = projection;
 
-  pl.position = glm::vec4(0, 10, 0, 0);
+  pl.position = glm::vec4(0, 10, 0, 1);
   pl.position.y = config.GetReal("renderer", "LightY", 1);
   float lightPower = config.GetReal("renderer", "LightPower", 1);
-  pl.diffuse = glm::vec4(lightPower);
-  pl.specular = glm::vec4(lightPower);
+  pl.diffuse = glm::vec4(glm::vec3(lightPower), 1);
+  pl.specular = glm::vec4(glm::vec3(lightPower), 1);
 
   glGenFramebuffers(1, &dpth_fbo);
   glGenTextures(1, &dpth_cbmp);
@@ -353,15 +353,15 @@ bool renderer::init(INIReader config){
 
   glGenTextures(1, &gSpecular);
   glBindTexture(GL_TEXTURE_2D, gSpecular);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, p_width, p_height, 0, GL_RED, GL_FLOAT, NULL);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, p_width, p_height, 0, GL_RGB, GL_FLOAT, NULL);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, gSpecular, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gSpecular, 0);
 
-  unsigned int attachments[5] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
-  glDrawBuffers(5, attachments);
+  unsigned int attachments[4] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
+  glDrawBuffers(4, attachments);
 
   unsigned int rboDepth;
 	glGenRenderbuffers(1, &rboDepth);
@@ -669,10 +669,14 @@ void renderer::update(float deltaTime){
 	          pl.position.x + distance * ray.d.x,
 	          pl.position.y + distance * ray.d.y,
 	          pl.position.z + distance * ray.d.z,
-	          0
+	          1
 	        );
-	        vpl.diffuse = glm::vec4(Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y), 0);
-	        vpl.specular = glm::vec4(Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y), 0);
+	        glm::vec4 incident = glm::normalize(pl.position - vpl.position);
+	        glm::vec4 normal = Model::getNormal(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.diffuse *= pl.diffuse * glm::max(glm::dot(normal, incident), 0.f) / (PI);
+	        vpl.specular = Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.specular *= pl.specular * glm::max(glm::dot(normal, incident), 0.f) / (PI); // probably wrong
 	        vpls.push_back(vpl);
 	      }
 	    }

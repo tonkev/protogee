@@ -26,13 +26,14 @@ void main(){
   float shininess = texture(gSpecular, TexCoords).r;
   vec3 viewDir = normalize(viewPos - fragPos);
 
+  const float PI = 3.14159;
   vec3 lightDir = normalize(light.position - fragPos);
-  float diff = max(dot(norm, lightDir), 0.0);
-  vec3 diffuse = diff * light.diffuse;
+  float diff = max(dot(norm, lightDir), 0);
+  vec3 diffuse = diff * light.diffuse / PI;
 
   vec3 reflectDir = reflect(-lightDir, norm);
   float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-  vec3 specular = vec3(0);//shininess * spec * light.specular;
+  vec3 specular = shininess * spec * light.specular;
 
   vec3 fragToLight = fragPos - light.position;
   float closestDepth = texture(dMap, fragToLight).r;
