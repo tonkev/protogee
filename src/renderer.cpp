@@ -30,6 +30,7 @@ struct Light{
 
 Light pl;
 std::vector<Light> vpls;
+std::vector<bool> validVPLs;
 
 unsigned int p_width;
 unsigned int p_height;
@@ -481,6 +482,8 @@ bool renderer::init(INIReader config){
 
   rDelta = config.GetReal("renderer", "rDelta", 0.1f);
 
+  validVPLs.reserve(noOfVPLS);
+
   //vplRays.reserve(noOfVPLS);
   vplIsects.reserve(noOfVPLS);
   vplOcclus.reserve(noOfVPLS);
@@ -601,8 +604,23 @@ void renderer::update(float deltaTime){
 	if(u) pl.position += step * glm::vec4(0, 0, 1, 0);
 	if(i || k || j || l || o || u) vplUpdated = true;
 
-  if(indirectEnabled && iHistoryIndex == 0){
+  if(indirectEnabled){
+  	  int invalidatedVPLs = 0;
 	  if(vpls.size() > 0){
+	  	  int lihi = (iHistoryIndex - 1) % iHistorySize;
+
+		  for(int i = 0; i < vpls.size(); ++i){
+		  	if(!validVPLs[i])
+		  		invalidatedVPLs++;
+		  }
+	  	  
+		  for(int i = 0; i < iHistorySize ; ++i){
+		    if(validVPLs[(i * iHistorySize) + lihi]){
+				validVPLs[(i * iHistorySize) + lihi] = false;
+				invalidatedVPLs++;
+			}
+		  }
+	  	
 		  for(int i = 0; i < vpls.size(); ++i){
 		  	Light vpl = vpls[i];
 		  	RR::ray r;
@@ -628,16 +646,20 @@ void renderer::update(float deltaTime){
 	
 		  for(int i = vpls.size() - 1; i >= 0; --i){		  
 			if(occlus[i] != -1){
-				vpls.erase(vpls.begin()+i);
+				validVPLs[i] = false;
+				invalidatedVPLs++;
 			}
 		  }
 	      intersectionApi->DeleteBuffer(occlu_buffer);
 	      intersectionApi->DeleteBuffer(ray_buffer);
 	  }
 		  
-	  if(vpls.size() < noOfVPLS){
-		unsigned int noOfVPLSShot = noOfVPLS - vpls.size();
-		if(noOfVPLSShot > maxVPLGenPerFrame) noOfVPLSShot = maxVPLGenPerFrame;
+	  //if(vpls.size() < noOfVPLS){
+	unsigned int noOfVPLSShot = invalidatedVPLs + (noOfVPLS - vpls.size());
+	if(noOfVPLSShot > maxVPLGenPerFrame) noOfVPLSShot = maxVPLGenPerFrame;
+	//std::cout << invalidatedVPLs << " " << noOfVPLSShot << " " << vpls.size() << " " << vplNo << std::endl;
+
+	if(noOfVPLSShot > 0){
 		
 	    for(int i = 0; i < noOfVPLSShot; ++i){
 	      double* hltn = halton(1000 + vplNo++, 3);
@@ -677,7 +699,18 @@ void renderer::update(float deltaTime){
 	        vpl.diffuse *= pl.diffuse * glm::max(glm::dot(normal, incident), 0.f) / (PI);
 	        vpl.specular = Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
 	        vpl.specular *= pl.specular * glm::max(glm::dot(normal, incident), 0.f) / (PI); // probably wrong
-	        vpls.push_back(vpl);
+	        if(vpls.size() < noOfVPLS){
+	        	vpls.push_back(vpl);
+	        	validVPLs[vpls.size() - 1] = true;
+	        }else{
+	        	for(int j = 0; j < noOfVPLS; ++j){
+	        		if(!validVPLs[j]){
+	        			vpls[j] = vpl;
+	        			validVPLs[j] = true;
+	        			break;
+	        		}
+	        	}
+	        }
 	      }
 	    }
 

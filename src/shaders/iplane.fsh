@@ -12,7 +12,7 @@ struct Light {
   vec3 diffuse;
   vec3 specular;
 };
-#define MAX_NO_OF_VPLS 128
+#define MAX_NO_OF_VPLS 512
 uniform Light pl;
 uniform Light vpls[MAX_NO_OF_VPLS];
 uniform sampler2DArray vplMasks;

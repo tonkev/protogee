@@ -37,9 +37,6 @@ __kernel void pre_rays(read_only image2d_t positions, constant light* vpls, cons
 	const int i = ((y*pwidth + x) * vplsPerPixel) + v;
 	const float3 pos = read_imagef(positions, sampler, (int2)(x, y)).xyz;
 	const float3 vpos = vpls[pv].position.xyz;
-	//const float3 dpos = vpls[1].position.xyz;
-	//if(x + y == 0 && pv == 1)
-	//	printf("%f, %f, %f", dpos.x, dpos.y, dpos.z);
 	rays[i].o = (float4) (vpos, length(pos - vpos) - 0.001);
 	rays[i].d = (float4) (normalize(pos - vpos), 0.f);
     rays[i].extra.x = 0xFFFFFFFF;
