@@ -46,11 +46,11 @@ void main(){
 	
 	    vec3 lightDir = normalize(vpls[i].position - fragPos);
 	    float diff = max(dot(norm, lightDir), 0);
-	    diffuse += diff * vpls[i].diffuse * visibility * attenuation / PI;
+	    diffuse += diff * vpls[i].diffuse * visibility * attenuation;// / PI;
 	
 	    vec3 reflectDir = reflect(-lightDir, norm);
 	    float spec = pow(max(dot(viewDir, reflectDir), 0), 32);
-	    specular += shininess * spec * vpls[i].specular * visibility * attenuation / PI;
+	    specular += shininess * spec * vpls[i].specular * visibility * attenuation;// / PI;
 	  }
   }
 

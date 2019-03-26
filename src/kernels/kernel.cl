@@ -17,6 +17,7 @@ typedef struct{
   float4 position;
   float4 diffuse;
   float4 specular;
+  float4 normal;
 } light;
 
 const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
