@@ -108,12 +108,14 @@ bool vplDebugEnabled = false;
 bool vplUpdated = true;
 
 std::vector<glm::mat4> viewHistory;
-unsigned int iHistory, iHistoryIndex, iHistorySize, iHistoryShader, pHistory;
+unsigned int iHistory, iHistorySize, iHistoryShader, pHistory;
+int iHistoryIndex;
 
 float lightRadius;
 float areaLightChance;
 
 int currVPL;
+int pastVPL = -1;
 int noOfInvalidVPLs;
 int noOfVPLBounces;
 
@@ -622,12 +624,14 @@ void renderer::update(float deltaTime){
 	if(i || k || j || l || o || u) vplUpdated = true;
 
   if(indirectEnabled){
-		int lihi = (iHistoryIndex - 1) % iHistorySize;
+		int lihi = iHistoryIndex - 1;
+		if(lihi < 0) lihi = iHistorySize;
+		lihi = iHistoryIndex % iHistorySize;
 	  if(noOfInvalidVPLs < maxVPLGenPerFrame){
 		  for(int i = 0; i < noOfVPLS / iHistorySize ; ++i){
 		    if(validVPLs[(lihi * noOfVPLS / iHistorySize) + i]){
-					//validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
-					//noOfInvalidVPLs++;
+					validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
+					noOfInvalidVPLs++;
 				}
 		  }
 	  }
@@ -638,7 +642,7 @@ void renderer::update(float deltaTime){
 				pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
 	  	Light vpl = vpls[i];
 	  	RR::ray r;
-	  	glm::vec4 diff = pvpl.position - vpl.position;
+	  	glm::vec4 diff = vpl.position - pvpl.position;
 	  	r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, glm::length(diff) - rDelta);
 	  	diff = glm::normalize(diff);
 	  	r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
@@ -668,16 +672,17 @@ void renderer::update(float deltaTime){
 				}
 			}
 	  }
+
     intersectionApi->DeleteBuffer(occlu_buffer);
     intersectionApi->DeleteBuffer(ray_buffer);
-		  
+		
 		unsigned int noOfVPLSShot = 0;
-		int pastVPL = (currVPL - 1) % noOfVPLS;
-		while(noOfVPLSShot < maxVPLGenPerFrame && pastVPL != currVPL){
+		unsigned int noOfVPLSTried = 0;
+		while(noOfVPLSShot < maxVPLGenPerFrame && noOfVPLSTried < noOfVPLS){
+			noOfVPLSTried++;
 			currVPL = (currVPL + 1) % noOfVPLS;
 			if(!validVPLs[currVPL]){
 				Light pvpl = pl;
-		
 				double* hltn = halton(1000 + vplNo++, 3);
 				double* chance = halton(1000 + vplNo, 1);
 				RR::ray r;
@@ -693,19 +698,16 @@ void renderer::update(float deltaTime){
 			 		pvpl = vpls[r.extra.y];
 					glm::vec3 dir = glm::vec3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
 					glm::vec3 normal = glm::vec3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
-					dir = glm::faceforward(dir, dir, normal);
+					dir = glm::faceforward(-dir, dir, normal);
+					r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 					r.d = RR::float3(dir.x, dir.y, dir.z);
-					//r.d = RR::float3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
-			 	}else if(chance[0] < areaLightChance){
-					r.o.w = lightRadius;
-				}
-				
+			 	}
 				vplRays[noOfVPLSShot] = r;
 				noOfVPLSShot++;
 			}
 		}
 
-		if(noOfVPLSShot > 0){
+		if(noOfVPLSShot > 0){	
 			RR::Buffer* ray_buffer = intersectionApi->CreateBuffer(noOfVPLSShot * sizeof(RR::ray), &vplRays);
 	    RR::Buffer* isect_buffer = intersectionApi->CreateBuffer(noOfVPLSShot * sizeof(RR::Intersection), nullptr);
 	    intersectionApi->QueryIntersection(ray_buffer, noOfVPLSShot, isect_buffer, nullptr, nullptr);
@@ -722,51 +724,36 @@ void renderer::update(float deltaTime){
 	    for(int i = 0; i < noOfVPLSShot; ++i){
 	      RR::ray ray = vplRays[i];
 	      RR::Intersection isect = isects[i];
-	      if(isect.shapeid != -1 || ray.o.w <= lightRadius){
+				if(isect.shapeid != -1){
 	      	Light pvpl = pl;
 	      	int vplIndex = ray.extra.x;
 	      	if(ray.extra.y != -1){
 	      		pvpl = vpls[ray.extra.y];
 	      	}
-					
-					//std::cout << ray.extra.y << "->" << ray.extra.x << " : " << ray.extra.x - ray.extra.y << std::endl;
 	        Light vpl;
-	        if(isect.shapeid != -1){
-		        float distance = isect.uvwt.w - rDelta;
-						//std::cout << distance << std::endl;
-		        vpl.position = glm::vec4(
-		          pvpl.position.x + distance * ray.d.x,
-		          pvpl.position.y + distance * ray.d.y,
-		          pvpl.position.z + distance * ray.d.z,
-		          1
-		        );
-		        glm::vec4 incident = glm::normalize(pvpl.position - vpl.position);
-		        glm::vec4 normal = Model::getNormal(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
-		        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
-		        vpl.diffuse *= pvpl.diffuse * glm::max(glm::dot(normal, incident), 0.f);// / (PI);
-		        vpl.specular = Model::getSpecular(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
-		        vpl.specular *= pvpl.specular * glm::max(glm::dot(normal, incident), 0.f);// / (PI); // probably wrong
-		        if(ray.extra.y != -1){
-		        	float dist = distance;
-		        	for(int j = ray.extra.y; j >= noOfVPLS / noOfVPLBounces; j -= noOfVPLS / noOfVPLBounces){
-		        		int k = j - (noOfVPLS / noOfVPLBounces);
-		        		dist += glm::distance(vpls[j].position, vpls[k].position);
-		        	}
-						  float attenuation = 1 / (1 + dist * dist);
-						  vpl.diffuse *= attenuation;
-						  vpl.specular *= attenuation;
-		        }
-				  }else{
-				  	vpl.position = glm::vec4(
-				      pvpl.position.x + lightRadius * ray.d.x,
-				      pvpl.position.y + lightRadius * ray.d.y,
-				      pvpl.position.z + lightRadius * ray.d.z,
-				      1
-			      );
-			      vpl.diffuse = pvpl.diffuse / (PI);
-			      vpl.specular = pvpl.specular / (PI);
-				  }
-	             	
+	        float distance = isect.uvwt.w;
+	        glm::vec4 normal = Model::getNormal(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+					vpl.normal = normal;
+	        vpl.position = glm::vec4(
+	          pvpl.position.x + (distance * ray.d.x) + (normal.x * rDelta),
+	          pvpl.position.y + (distance * ray.d.y) + (normal.y * rDelta),
+	          pvpl.position.z + (distance * ray.d.z) + (normal.z * rDelta),
+	          1
+	        );
+	        glm::vec4 incident = glm::normalize(pvpl.position - vpl.position);
+	        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
+	        vpl.diffuse *= pvpl.diffuse * glm::max(glm::dot(normal, incident), 0.f);// / (PI);
+	        vpl.specular = glm::vec4(0, 0, 0, 1);
+	        if(ray.extra.y != -1){
+	        	float dist = distance;
+	        	for(int j = ray.extra.y; j >= noOfVPLS / noOfVPLBounces; j -= noOfVPLS / noOfVPLBounces){
+	        		int k = j - (noOfVPLS / noOfVPLBounces);
+	        		dist += glm::distance(vpls[j].position, vpls[k].position);
+	        	}
+					  float attenuation = 1 / (1 + dist * dist);
+					  vpl.diffuse *= attenuation;
+					  vpl.specular *= attenuation;
+	        }
 		 			vpls[vplIndex] = vpl;
 		 			validVPLs[vplIndex] = true;
 		 			noOfInvalidVPLs--;
@@ -786,11 +773,9 @@ void renderer::update(float deltaTime){
   	std::vector<Light> vpls2;
 		for(int i = 0; i < vpls.size(); ++i){
 			Light pvpl = pl;	
-		    if(i >= noOfVPLS / noOfVPLBounces){
-					//std::cout << i - (noOfVPLS / noOfVPLBounces) << "->" << i << std::endl;
-		    	pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
-				}
-			//std::cout << pvpl.position.x << ", " << pvpl.position.y << ", " << pvpl.position.z << "->" << vpls[i].position.x << ", " << vpls[i].position.y << ", " << vpls[i].position.z << std::endl;
+	    if(i >= noOfVPLS / noOfVPLBounces){
+	    	pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
+			}
 			vpls2.push_back(pvpl);
 			vpls2.push_back(vpls[i]);		
 		}
@@ -820,7 +805,6 @@ void renderer::update(float deltaTime){
 		glClear(GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 		glUseProgram(dpth_shader);
-		//glUniformMatrix4fv(glGetUniformLocation(dpth_shader, "model"), 1, GL_FALSE, &model[0][0]);
 
 		glUniformMatrix4fv(glGetUniformLocation(dpth_shader, "shadowMatrices[0]"), 1, GL_FALSE, &dpth_trnsfrms[0][0][0]);
 		glUniformMatrix4fv(glGetUniformLocation(dpth_shader, "shadowMatrices[1]"), 1, GL_FALSE, &dpth_trnsfrms[1][0][0]);
@@ -889,8 +873,6 @@ void renderer::update(float deltaTime){
 	  }else{
 	  	realVPP = 1;
 	  }
-	  //std::cout << vpls[1].position.x << ", " << vpls[1].position.y << ", " << vpls[1].position.z << std::endl;
-	  //std::cout << global_item_size[0] << ", " << global_item_size[1] << ", " << global_item_size[2] << ", " << realVPP << std::endl;
 	  size_t local_item_size[3] = {1, 1, 1};
 	  
 	  clSetKernelArg(clPreRaysKernel, 0, sizeof(cl_mem), (void *)&clPositions);
