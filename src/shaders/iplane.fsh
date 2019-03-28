@@ -5,7 +5,6 @@ in vec2 TexCoords;
 
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
-uniform sampler2D gSpecular;
 
 struct Light {
   vec3 position;
@@ -23,16 +22,15 @@ uniform int noOfVPLs;
 uniform int iHistoryIndex;
 uniform int iHistorySize;
 
+uniform int noOfVPLBounces = 1;
+
 uniform int debugVPLI = -1;
 
 void main(){
   vec3 norm = normalize(texture(gNormal, TexCoords).xyz);
   vec3 fragPos = texture(gPosition, TexCoords).xyz;
-  float shininess = texture(gSpecular, TexCoords).r;
-  vec3 viewDir = normalize(viewPos - fragPos);
 
   vec3 diffuse = vec3(0);
-  vec3 specular = vec3(0);
 
   const float PI = 3.14159;
 
@@ -41,18 +39,15 @@ void main(){
   	if(debugVPLI == -1 || debugVPLI == i){
 	    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
 	    float dist = distance(vpls[i].position, fragPos);
-	    dist += distance(pl.position, vpls[i].position);
+			int firstBounceVPLI = int(mod(i, int(noOfVPLs / noOfVPLBounces)));
+	    dist += distance(pl.position, vpls[firstBounceVPLI].position);
 	    float attenuation = 1 / (1 + dist * dist);
 	
 	    vec3 lightDir = normalize(vpls[i].position - fragPos);
 	    float diff = max(dot(norm, lightDir), 0);
 	    diffuse += diff * vpls[i].diffuse * visibility * attenuation;// / PI;
-	
-	    vec3 reflectDir = reflect(-lightDir, norm);
-	    float spec = pow(max(dot(viewDir, reflectDir), 0), 32);
-	    specular += shininess * spec * vpls[i].specular * visibility * attenuation;// / PI;
 	  }
   }
 
-  gIndirect = min(diffuse + specular, 1);
+  gIndirect = min(diffuse, 1);
 }

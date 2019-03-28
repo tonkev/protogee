@@ -293,9 +293,11 @@ bool renderer::init(INIReader config){
 
   pl.position = glm::vec4(0, 10, 0, 1);
   pl.position.y = config.GetReal("renderer", "LightY", 1);
-  float lightPower = config.GetReal("renderer", "LightPower", 1);
-  pl.diffuse = glm::vec4(glm::vec3(lightPower), 1);
-  pl.specular = glm::vec4(glm::vec3(lightPower), 1);
+  float lightR = config.GetReal("renderer", "LightR", 1);
+  float lightG = config.GetReal("renderer", "LightG", 1);
+  float lightB = config.GetReal("renderer", "LightB", 1);
+  pl.diffuse = glm::vec4(glm::vec3(lightR, lightG, lightB), 1);
+  pl.specular = glm::vec4(glm::vec3(lightR, lightG, lightB), 1);
 
   glGenFramebuffers(1, &dpth_fbo);
   glGenTextures(1, &dpth_cbmp);
@@ -620,56 +622,54 @@ void renderer::update(float deltaTime){
 	if(i || k || j || l || o || u) vplUpdated = true;
 
   if(indirectEnabled){
-	  if(vpls.size() > 0){
-			int lihi = (iHistoryIndex - 1) % iHistorySize;
-		  if(noOfInvalidVPLs < maxVPLGenPerFrame){
-			  for(int i = 0; i < noOfVPLS / iHistorySize ; ++i){
-			    if(validVPLs[(lihi * noOfVPLS / iHistorySize) + i]){
-						validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
-						noOfInvalidVPLs++;
-					}
-			  }
-		  }
-	  	
-		  for(int i = 0; i < vpls.size(); ++i){
-				Light pvpl = pl;
-				if(i > noOfVPLS / noOfVPLBounces)
-					pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
-		  	Light vpl = vpls[i];
-		  	RR::ray r;
-		  	glm::vec4 diff = pvpl.position - vpl.position;
-		  	r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, glm::length(diff) - rDelta);
-		  	diff = glm::normalize(diff);
-		  	r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
-		  	vplRays[i] = r;
-		  }
-		
-		  RR::Buffer* ray_buffer = intersectionApi->CreateBuffer(vpls.size() * sizeof(RR::ray), &vplRays);
-      RR::Buffer* occlu_buffer = intersectionApi->CreateBuffer(vpls.size() * sizeof(int), nullptr);
-
-      intersectionApi->QueryOcclusion(ray_buffer, vpls.size(), occlu_buffer, nullptr, nullptr);
-  
-      int* occlus = nullptr;
- 	    RR::Event* e = nullptr;
-      intersectionApi->MapBuffer(occlu_buffer, RR::kMapRead, 0, vpls.size() * sizeof(int), (void**)&occlus, &e);
-  
-      e->Wait();
-      intersectionApi->DeleteEvent(e);
-		  e = nullptr;
-	
-		  for(int i = vpls.size() - 1; i >= 0; --i){
-				if(occlus[i] != -1){
-					int j = i;
-					if(j < noOfVPLS && validVPLs[j]){
-						validVPLs[j] = false;
-						noOfInvalidVPLs++;
-						j += (noOfVPLS / noOfVPLBounces);
-					}
+		int lihi = (iHistoryIndex - 1) % iHistorySize;
+	  if(noOfInvalidVPLs < maxVPLGenPerFrame){
+		  for(int i = 0; i < noOfVPLS / iHistorySize ; ++i){
+		    if(validVPLs[(lihi * noOfVPLS / iHistorySize) + i]){
+					//validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
+					//noOfInvalidVPLs++;
 				}
 		  }
-      intersectionApi->DeleteBuffer(occlu_buffer);
-      intersectionApi->DeleteBuffer(ray_buffer);
 	  }
+  	
+	  for(int i = 0; i < vpls.size(); ++i){
+			Light pvpl = pl;
+			if(i > noOfVPLS / noOfVPLBounces)
+				pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
+	  	Light vpl = vpls[i];
+	  	RR::ray r;
+	  	glm::vec4 diff = pvpl.position - vpl.position;
+	  	r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, glm::length(diff) - rDelta);
+	  	diff = glm::normalize(diff);
+	  	r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
+	  	vplRays[i] = r;
+	  }
+	
+	  RR::Buffer* ray_buffer = intersectionApi->CreateBuffer(vpls.size() * sizeof(RR::ray), &vplRays);
+    RR::Buffer* occlu_buffer = intersectionApi->CreateBuffer(vpls.size() * sizeof(int), nullptr);
+
+    intersectionApi->QueryOcclusion(ray_buffer, vpls.size(), occlu_buffer, nullptr, nullptr);
+
+    int* occlus = nullptr;
+    RR::Event* e = nullptr;
+    intersectionApi->MapBuffer(occlu_buffer, RR::kMapRead, 0, vpls.size() * sizeof(int), (void**)&occlus, &e);
+
+    e->Wait();
+    intersectionApi->DeleteEvent(e);
+	  e = nullptr;
+
+	  for(int i = vpls.size() - 1; i >= 0; --i){
+			if(occlus[i] != -1){
+				int j = i;
+				if(j < noOfVPLS && validVPLs[j]){
+					validVPLs[j] = false;
+					noOfInvalidVPLs++;
+					j += (noOfVPLS / noOfVPLBounces);
+				}
+			}
+	  }
+    intersectionApi->DeleteBuffer(occlu_buffer);
+    intersectionApi->DeleteBuffer(ray_buffer);
 		  
 		unsigned int noOfVPLSShot = 0;
 		int pastVPL = (currVPL - 1) % noOfVPLS;
@@ -683,17 +683,20 @@ void renderer::update(float deltaTime){
 				RR::ray r;
 				r.extra.x = currVPL;
 				r.extra.y = -1;
+				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
+				r.d = RR::float3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);				
 				if(currVPL >= noOfVPLS / noOfVPLBounces){
 				  r.extra.y = currVPL - (noOfVPLS / noOfVPLBounces);
 				  if(!validVPLs[r.extra.y]){
 				  	continue;
 				  }
 			 		pvpl = vpls[r.extra.y];
-			 	}
-				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
-				r.d = RR::float3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
-				
-				if(r.extra.y == -1 && chance[0] < areaLightChance){
+					glm::vec3 dir = glm::vec3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
+					glm::vec3 normal = glm::vec3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
+					dir = glm::faceforward(dir, dir, normal);
+					r.d = RR::float3(dir.x, dir.y, dir.z);
+					//r.d = RR::float3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
+			 	}else if(chance[0] < areaLightChance){
 					r.o.w = lightRadius;
 				}
 				
@@ -745,9 +748,9 @@ void renderer::update(float deltaTime){
 		        vpl.specular *= pvpl.specular * glm::max(glm::dot(normal, incident), 0.f);// / (PI); // probably wrong
 		        if(ray.extra.y != -1){
 		        	float dist = distance;
-		        	for(int j = vplIndex; j >= noOfVPLS / noOfVPLBounces; j -= noOfVPLS / noOfVPLBounces){
+		        	for(int j = ray.extra.y; j >= noOfVPLS / noOfVPLBounces; j -= noOfVPLS / noOfVPLBounces){
 		        		int k = j - (noOfVPLS / noOfVPLBounces);
-		        		dist += glm::distance(vpls[j].position, vpls[k].position); 
+		        		dist += glm::distance(vpls[j].position, vpls[k].position);
 		        	}
 						  float attenuation = 1 / (1 + dist * dist);
 						  vpl.diffuse *= attenuation;
@@ -942,6 +945,7 @@ void renderer::update(float deltaTime){
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "noOfVPLs"), vpls.size());
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "iHistorySize"), iHistorySize);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "iHistoryIndex"), iHistoryIndex);
+	  glUniform1i(glGetUniformLocation(iPlaneShader, "noOfVPLBounces"), noOfVPLBounces);
 	  glActiveTexture(GL_TEXTURE0);
 	  glBindTexture(GL_TEXTURE_2D, gPosition);
 	  glActiveTexture(GL_TEXTURE1);
