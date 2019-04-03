@@ -41,34 +41,30 @@ struct Mesh {
   Material* material;
   RR::Shape* shape;
   std::vector<Vertex> vertices;
+	glm::mat4* model;
 };
 
 std::vector<Material> materials;
 std::vector<Mesh> meshes;
 glm::mat4 model;
-glm::mat4 invPrevModel;
+glm::mat4 dynModel;
 
-bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
-  std::string filename = config.Get("model", "filename", "INVALID");
-  std::string path = config.Get("model", "path", "INVALID");
+RR::matrix sModel;
+RR::matrix sModelInverse;
 
-  tinyobj::attrib_t attrib;
-  std::vector<tinyobj::shape_t> shapes;
-  std::vector<tinyobj::material_t> mats;
-  std::string warn;
-  std::string err;
-  if(!tinyobj::LoadObj(&attrib, &shapes, &mats, &warn, &err, (path + filename).c_str(), path.c_str())){
-    std::cerr << "Failed to load Model: " << err << std::endl;
-    return false;
-  }
+glm::vec3 dModelPosStart;
+glm::vec3 dModelPosEnd;
+RR::matrix dModel;
+RR::matrix dModelInverse;
+unsigned int dModelIndex;
+float dModelTimer = 0;
 
-  int imgFlags = IMG_INIT_JPG | IMG_INIT_PNG;
-	if(!(IMG_Init(imgFlags) & imgFlags)){
-		std::cerr << "Failed initialise SDL_Image: %s" << IMG_GetError() << std::endl;
-		return false;
-	}
+RR::IntersectionApi* rIAPI;
 
-  for(const auto& mat : mats){
+void load(std::string path, tinyobj::attrib_t attrib, std::vector<tinyobj::shape_t> shapes, std::vector<tinyobj::material_t> mats, RR::IntersectionApi* intersectionApi, RR::matrix& model, RR::matrix& modelInverse, glm::mat4* gmodel){
+	unsigned int materials_start = materials.size();
+
+	for(const auto& mat : mats){
     Material material;
     material.ambient = glm::vec3(
       mat.ambient[0],
@@ -161,13 +157,6 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
   }
   glBindTexture(GL_TEXTURE_2D, 0);
 
-  float scale = config.GetReal("model", "scale", 1.f);
-  model = glm::mat4(1.0f);
-  model = glm::scale(model, glm::vec3(scale));
-  invPrevModel = model;
-  RR::matrix rModel = RR::scale(RR::float3(scale, scale, scale));
-  RR::matrix rModelInv = RR::inverse(rModel);
-
   for(const auto& shape : shapes){
     Mesh mesh;
 
@@ -185,6 +174,11 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
         attrib.normals[3 * index.normal_index + 2]
       );
       vertex.color = glm::vec3(1.0f, 1.0f, 1.0f);
+      vertex.color = glm::vec3(
+        attrib.colors[3 * index.vertex_index + 0],
+        attrib.colors[3 * index.vertex_index + 1],
+        attrib.colors[3 * index.vertex_index + 2]
+      );
       if(index.texcoord_index != -1)
         vertex.texCoord = glm::vec2(
           attrib.texcoords[2 * index.texcoord_index + 0],
@@ -194,7 +188,7 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
     }
 
     mesh.count = mesh.vertices.size();
-    mesh.material = &(materials[shape.mesh.material_ids[0]]);
+    mesh.material = &(materials[materials_start + shape.mesh.material_ids[0]]);
 
     glGenBuffers(1, &mesh.vbo);
     glGenVertexArrays(1, &mesh.vao);
@@ -226,22 +220,78 @@ bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
       numfaceverts[i] = 3;
     }
 
+		mesh.model = gmodel;
     mesh.shape = intersectionApi->CreateMesh((const float*)mesh.vertices.data(), mesh.count, sizeof(Vertex), indices, 0, numfaceverts, numfaces);
-	mesh.shape->SetTransform(rModel, rModelInv);
-	mesh.shape->SetId(meshes.size());
+		mesh.shape->SetTransform(model, modelInverse);
+		mesh.shape->SetId(meshes.size());
     intersectionApi->AttachShape(mesh.shape);
-
+		
     meshes.push_back(mesh);
   }
+}
+
+bool Model::init(INIReader config, RR::IntersectionApi* intersectionApi){
+  int imgFlags = IMG_INIT_JPG | IMG_INIT_PNG;
+	if(!(IMG_Init(imgFlags) & imgFlags)){
+		std::cerr << "Failed initialise SDL_Image: %s" << IMG_GetError() << std::endl;
+		return false;
+	}
+
+	materials.reserve(512);
+
+  std::string filename = config.Get("model", "filename", "INVALID");
+  std::string path = config.Get("model", "path", "INVALID");
+
+  std::string dfilename = config.Get("model", "dfilename", "INVALID");
+  std::string dpath = config.Get("model", "dpath", "INVALID");
+
+  tinyobj::attrib_t attrib;
+  tinyobj::attrib_t dattrib;
+  std::vector<tinyobj::shape_t> shapes;
+  std::vector<tinyobj::material_t> mats;
+  std::string warn;
+  std::string err;
+  if(!tinyobj::LoadObj(&attrib, &shapes, &mats, &warn, &err, (path + filename).c_str(), path.c_str())){
+    std::cerr << "Failed to load Model: " << err << std::endl;
+    return false;
+  }
+
+  float scale = config.GetReal("model", "scale", 1.f);
+  model = glm::mat4(1.0f);
+  model = glm::scale(model, glm::vec3(scale));
+	for(int x = 0; x < 4; ++x)
+		for(int y = 0; y < 4; ++y)
+			sModel.m[x][y] = model[x][y];
+	sModelInverse = RR::inverse(sModel);
+	load(path, attrib, shapes, mats, intersectionApi, sModel, sModelInverse, &model);
+	
+	dModelIndex = meshes.size();
+  dModelPosStart = glm::vec3(0.f);
+  dModelPosEnd = glm::vec3(0.f, -5.f, 0.f);
+	dynModel = glm::mat4(1.0f);
+	
+	dModel = RR::translation(RR::float3(0, 0, 0));
+	dModelInverse = RR::inverse(dModel);
+	if(dpath.compare("INVALID") != 0){
+		shapes.clear();
+		mats.clear();
+		if(!tinyobj::LoadObj(&dattrib, &shapes, &mats, &warn, &err, (dpath + dfilename).c_str(), dpath.c_str())){
+		  std::cerr << "Failed to load dModel: " << err << std::endl;
+		  return false;
+		}
+		
+		load(dpath, dattrib, shapes, mats, intersectionApi, dModel, dModelInverse, &dynModel);
+	}
+  
   intersectionApi->Commit();
+	rIAPI = intersectionApi;
 
   return true;
 }
 
 void Model::draw(unsigned int shader){
   for(const auto& mesh : meshes){
-    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, &model[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(shader, "invPrevModel"), 1, GL_FALSE, &invPrevModel[0][0]);
+    glUniformMatrix4fv(glGetUniformLocation(shader, "model"), 1, GL_FALSE, &(*mesh.model)[0][0]);
     glUniform3fv(glGetUniformLocation(shader, "DiffuseColor"), 1, &(mesh.material->diffuse)[0]);
     glUniform3fv(glGetUniformLocation(shader, "SpecularColor"), 1, &(mesh.material->specular)[0]);
     glUniform1f(glGetUniformLocation(shader, "shininess"), mesh.material->shininess);
@@ -265,6 +315,20 @@ void Model::draw(unsigned int shader){
     glDrawArrays(GL_TRIANGLES, 0, mesh.count);
   }
   glBindVertexArray(0);
+}
+
+void Model::update(float deltaTime){
+	dModelTimer += deltaTime;
+	float ratio = fmod(dModelTimer, 20.f)/20;
+	glm::vec3 dModelPos = (dModelPosStart * (1 - ratio)) + (dModelPosEnd * ratio);
+  dynModel = glm::mat4(1.f);
+	dynModel = glm::translate(dynModel, dModelPos);
+	dModel = RR::translation(RR::float3(dModelPos.x, dModelPos.y, dModelPos.x));
+	dModelInverse = RR::inverse(dModel);
+	for(int i = dModelIndex; i < meshes.size(); ++i){
+		meshes[i].shape->SetTransform(dModel, dModelInverse);
+	}
+	rIAPI->Commit();
 }
 
 void Model::destroy(){
@@ -332,7 +396,7 @@ glm::vec4 Model::getDiffuse(unsigned int mesh_id, unsigned int face_id, float x,
 			diffuse = glm::vec4(mesh.material->diffuse, 1);
 		}
 	}else{
-		std::cout << "Model::getDiffuse : Out of Bounds" << std::endl;
+		//std::cout << "Model::getDiffuse : Out of Bounds" << std::endl;
 	}
 	return diffuse;
 }
@@ -357,7 +421,7 @@ glm::vec4 Model::getSpecular(unsigned int mesh_id, unsigned int face_id, float x
 			specular = glm::vec4(mesh.material->specular, 1);
 		}
 	}else{
-		std::cout << "Model::getSpecular : Out of Bounds" << std::endl;
+		//std::cout << "Model::getSpecular : Out of Bounds" << std::endl;
 	}
 	return specular;
 }
@@ -374,7 +438,7 @@ glm::vec4 Model::getNormal(unsigned int mesh_id, unsigned int face_id, float x, 
 		normal.z = (1-x-y)*v0.normal.z + x*v1.normal.z + y*v2.normal.z;
 		normal.w = 0;
 	}else{
-		std::cout << "Model::getNormal : Out of Bounds" << std::endl;
+		//std::cout << "Model::getNormal : Out of Bounds" << std::endl;
 	}
 	return normal;
 }

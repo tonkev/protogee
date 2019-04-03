@@ -119,6 +119,9 @@ int pastVPL = -1;
 int noOfInvalidVPLs;
 int noOfVPLBounces;
 
+bool isSpotLight = true;
+float cutoffAngle = 0.78f;
+
 void renderer::processSDLEvent(SDL_Event event){
   switch(event.type){
 	  case SDL_KEYDOWN:
@@ -283,7 +286,8 @@ bool renderer::init(INIReader config){
   //std::cout << clErr << std::endl;
   clQueue = clCreateCommandQueueWithProperties(clContext, devices[0], NULL, NULL);
   intersectionApi = RR::CreateFromOpenClContext(clContext, devices[0], clQueue);
-  //intersectionApi->SetOption("bvh.builder", "sah");
+	intersectionApi->SetOption("bvh.type", "hlbvh");
+  intersectionApi->SetOption("bvh.force2level", 1);
 
   p_width = config.GetInteger("interface", "width", 480);
   p_height = config.GetInteger("interface", "height", 320);
@@ -300,6 +304,7 @@ bool renderer::init(INIReader config){
   float lightB = config.GetReal("renderer", "LightB", 1);
   pl.diffuse = glm::vec4(glm::vec3(lightR, lightG, lightB), 1);
   pl.specular = glm::vec4(glm::vec3(lightR, lightG, lightB), 1);
+  pl.normal = glm::vec4(0, -1, 0, 0);
 
   glGenFramebuffers(1, &dpth_fbo);
   glGenTextures(1, &dpth_cbmp);
@@ -688,8 +693,6 @@ void renderer::update(float deltaTime){
 				RR::ray r;
 				r.extra.x = currVPL;
 				r.extra.y = -1;
-				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
-				r.d = RR::float3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);				
 				if(currVPL >= noOfVPLS / noOfVPLBounces){
 				  r.extra.y = currVPL - (noOfVPLS / noOfVPLBounces);
 				  if(!validVPLs[r.extra.y]){
@@ -699,9 +702,20 @@ void renderer::update(float deltaTime){
 					glm::vec3 dir = glm::vec3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
 					glm::vec3 normal = glm::vec3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
 					dir = glm::faceforward(-dir, dir, normal);
-					r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 					r.d = RR::float3(dir.x, dir.y, dir.z);
-			 	}
+			 	}else{
+					if(isSpotLight){
+						hltn = halton(1000 + vplNo, 2);
+						hltn[0] = (cutoffAngle * (2*hltn[0] - 1)) + acos(pl.normal.z);
+						hltn[1] = (cutoffAngle * (2*hltn[1] - 1)) + atan(pl.normal.y / pl.normal.x);
+						r.d.x = sin(hltn[0]) * cos(hltn[1]);
+						r.d.y = sin(hltn[0]) * sin(hltn[1]);
+						r.d.z = cos(hltn[0]);
+					}else{
+						r.d = RR::float3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
+					}
+				}
+				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 				vplRays[noOfVPLSShot] = r;
 				noOfVPLSShot++;
 			}
@@ -742,7 +756,7 @@ void renderer::update(float deltaTime){
 	        );
 	        glm::vec4 incident = glm::normalize(pvpl.position - vpl.position);
 	        vpl.diffuse = Model::getDiffuse(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
-	        vpl.diffuse *= pvpl.diffuse * glm::max(glm::dot(normal, incident), 0.f);// / (PI);
+	        vpl.diffuse *= pvpl.diffuse * glm::max(glm::dot(normal, incident), 0.f) / (PI);
 	        vpl.specular = glm::vec4(0, 0, 0, 1);
 	        if(ray.extra.y != -1){
 	        	float dist = distance;
@@ -835,6 +849,7 @@ void renderer::update(float deltaTime){
 	  glUniform3fv(glGetUniformLocation(dPlaneShader, "light.position"), 1, &pl.position[0]);
 	  glUniform3fv(glGetUniformLocation(dPlaneShader, "light.diffuse"), 1, &pl.diffuse[0]);
 	  glUniform3fv(glGetUniformLocation(dPlaneShader, "light.specular"), 1, &pl.specular[0]);
+	  glUniform3fv(glGetUniformLocation(dPlaneShader, "light.normal"), 1, &pl.normal[0]);
 	  glUniform3fv(glGetUniformLocation(dPlaneShader, "viewPos"), 1, &position[0]);
 	  glUniform1f(glGetUniformLocation(dPlaneShader, "far_plane"), dpth_far_plane);
 	  glUniform1i(glGetUniformLocation(dPlaneShader, "gPosition"), 0);
@@ -874,6 +889,8 @@ void renderer::update(float deltaTime){
 	  	realVPP = 1;
 	  }
 	  size_t local_item_size[3] = {1, 1, 1};
+
+		//std::cout << global_item_size[0] << ", " << global_item_size[1] << ", " << global_item_size[2] << ", " << realVPP << std::endl;
 	  
 	  clSetKernelArg(clPreRaysKernel, 0, sizeof(cl_mem), (void *)&clPositions);
 	  clSetKernelArg(clPreRaysKernel, 1, sizeof(cl_mem), (void *)&clVPLs);
@@ -945,6 +962,7 @@ void renderer::update(float deltaTime){
 	  glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
 	  glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
 	  glUniform1i(glGetUniformLocation(discShader, "pass"), 1);
+	  glUniform1i(glGetUniformLocation(discShader, "iss"), interleavedSamplingSize);
 	  glActiveTexture(GL_TEXTURE0);
 	  glBindTexture(GL_TEXTURE_2D, gNormal);
 	  glActiveTexture(GL_TEXTURE1);

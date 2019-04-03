@@ -17,7 +17,7 @@ set(RR_SHARED_CALC OFF CACHE BOOL "Link Calc(compute abstraction layer) dynamica
 set(RR_ENABLE_RAYMASK OFF CACHE BOOL "Enable ray masking in intersection kernels")
 set(RR_TUTORIALS OFF CACHE BOOL "Add tutorials projects")
 set(RR_SAFE_MATH ON CACHE BOOL "use safe math")
-set(RR_ENABLE_BACKFACE_CULL ON CACHE BOOL "Enable backface culling in intersection kernels")
+set(RR_ENABLE_BACKFACE_CULL OFF CACHE BOOL "Enable backface culling in intersection kernels")
 
 find_package(OpenCL REQUIRED)
 include_directories(${OpenCL_INCLUDE_DIRS})

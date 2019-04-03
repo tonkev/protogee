@@ -8,8 +8,9 @@ uniform sampler2D gIndirect;
 uniform sampler2D gPosition;
 
 uniform int pass;
+uniform int iss;
 uniform float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-uniform float cutoff = 100;
+uniform float cutoff = 1;
 
 void main(){
 	vec3 normal = texture(gNormal, TexCoords).xyz;
@@ -36,6 +37,6 @@ void main(){
 				indirect += texture(gIndirect, TexCoords - offsetY).rgb * weight[y];
 		}
 	}
-	FragColor = indirect;
 	
+	FragColor = indirect * iss;
 }

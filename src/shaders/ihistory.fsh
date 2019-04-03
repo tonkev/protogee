@@ -38,7 +38,7 @@ void main(){
 	}
 	if(dEnabled)
 		col += texture(dColor, TexCoords).rgb;
-	col *= texture(gAlbedo, TexCoords).rgb;
-	col = col / (col + vec3(1));	
+  col *= texture(gAlbedo, TexCoords).rgb;
+  col = col / (col + vec3(1));	
 	FragColor = vec4(col, 1);
 }

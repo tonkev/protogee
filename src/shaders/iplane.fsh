@@ -45,9 +45,10 @@ void main(){
 	
 	    vec3 lightDir = normalize(vpls[i].position - fragPos);
 	    float diff = max(dot(norm, lightDir), 0);
-	    diffuse += diff * vpls[i].diffuse * visibility * attenuation;// / PI;
+	    diffuse += diff * vpls[i].diffuse * visibility * attenuation / PI;
+			//diffuse += vec3(visibility);
 	  }
   }
 
-  gIndirect = min(diffuse, 1);
+  gIndirect = diffuse;
 }

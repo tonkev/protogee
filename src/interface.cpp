@@ -6,6 +6,7 @@
 #include "renderer.h"
 #include "interface.h"
 #include "camera.h"
+#include "model.h"
 
 SDL_Window* window;
 SDL_GLContext glcontext;
@@ -72,6 +73,7 @@ void interface::loop(){
 	deltaTime = (currentFrame - lastFrame) / 1000.0f;
 	lastFrame = currentFrame;
 	Camera::update(deltaTime);
+	Model::update(deltaTime);
 	renderer::update(deltaTime);
     SDL_GL_SwapWindow(window);
   }

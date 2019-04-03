@@ -9,6 +9,7 @@
 namespace Model{
   bool init(INIReader, RadeonRays::IntersectionApi*);
   void draw(unsigned int);
+  void update(float);
   void destroy();
   glm::mat4 getModelMatrix();
   glm::vec4 getDiffuse(unsigned int, unsigned int, float, float);

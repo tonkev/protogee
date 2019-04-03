@@ -6,7 +6,7 @@ layout (location = 3) out float gSpecular;
 
 in vec3 FragPos;
 in vec3 Normal;
-in vec3 PrevPos;
+in vec3 Color;
 in vec2 TexCoord;
 
 uniform float hasDiffuse;
@@ -35,11 +35,9 @@ void main(){
     discard;
   gPosition = vec4(FragPos, FragPos.y);
   gNormal = Normal;
+  gAlbedo = DiffuseColor;
   if(hasDiffuse != 0)
-    gAlbedo = texture(DiffuseTexture, TexCoord).rgb;
-  else
-    gAlbedo = DiffuseColor;
-  //gAlbedo.xy = prevPos.xy;
+    gAlbedo *= texture(DiffuseTexture, TexCoord).rgb;
   if(hasSpecular != 0)
     gSpecular = texture(SpecularTexture, TexCoord).r;
   else
