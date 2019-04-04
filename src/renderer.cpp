@@ -708,7 +708,18 @@ void renderer::update(float deltaTime){
 	  e = nullptr;
 
 	  for(int i = vpls.size() - 1; i >= 0; --i){
-			if(occlus[i] != -1){
+			bool outOfCone = false;
+			if(i < noOfVPLS / noOfVPLBounces){
+				LightExtra plex = plexs[i % noOfLights];
+				if(plex.type == 1){
+					Light pl = pls[i % noOfLights];
+					Light vpl = vpls[i];
+					glm::vec4 dir = glm::normalize(vpl.position - pl.position);
+					float angle = glm::dot(pl.normal, dir);
+					outOfCone = angle < plex.angle;
+				}
+			}
+			if(occlus[i] != -1 || outOfCone){
 				int j = i;
 				if(j < noOfVPLS && validVPLs[j]){
 					validVPLs[j] = false;
@@ -745,7 +756,7 @@ void renderer::update(float deltaTime){
 					r.d = RR::float3(dir.x, dir.y, dir.z);
 			 	}else{
 					LightExtra plex = plexs[currVPL % noOfLights];
-					if(plex.type == 1){
+					if(plex.type == 1){//slightly out of bounds
 						hltn = halton(1000 + vplNo, 2);
 						hltn[0] = (plex.angle * (2*hltn[0] - 1)) + acos(pvpl.normal.z);
 						hltn[1] = (plex.angle * (2*hltn[1] - 1)) + atan(pvpl.normal.y / pvpl.normal.x);
