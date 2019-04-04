@@ -11,12 +11,14 @@ struct Light {
   vec3 diffuse;
   vec3 specular;
 };
+#define MAX_NO_OF_LIGHTS 16
 #define MAX_NO_OF_VPLS 512
-uniform Light pl;
+uniform Light pls[MAX_NO_OF_LIGHTS];
 uniform Light vpls[MAX_NO_OF_VPLS];
 uniform sampler2DArray vplMasks;
 
 uniform vec3 viewPos;
+uniform int noOfLights;
 uniform int noOfVPLs;
 
 uniform int iHistoryIndex;
@@ -40,6 +42,7 @@ void main(){
 	    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
 	    float dist = distance(vpls[i].position, fragPos);
 			int firstBounceVPLI = int(mod(i, int(noOfVPLs / noOfVPLBounces)));
+			Light pl = pls[firstBounceVPLI % noOfLights];
 	    dist += distance(pl.position, vpls[firstBounceVPLI].position);
 	    float attenuation = 1 / (1 + dist * dist);
 	
