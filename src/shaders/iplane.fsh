@@ -28,9 +28,11 @@ uniform int noOfVPLBounces = 1;
 
 uniform int debugVPLI = -1;
 
+uniform float idScale;
+
 void main(){
-  vec3 norm = normalize(texture(gNormal, TexCoords).xyz);
-  vec3 fragPos = texture(gPosition, TexCoords).xyz;
+  vec3 norm = normalize(texture(gNormal, TexCoords * idScale).xyz);
+  vec3 fragPos = texture(gPosition, TexCoords * idScale).xyz;
 
   vec3 diffuse = vec3(0);
 
@@ -39,7 +41,7 @@ void main(){
   for(int j = 0; j < noOfVPLs/iHistorySize; ++j){
 	int i = (j * iHistorySize) + iHistoryIndex;
   	if(debugVPLI == -1 || debugVPLI == i){
-	    float visibility = texture(vplMasks, vec3(TexCoords, i)).r;
+	    float visibility = texture(vplMasks, vec3(TexCoords * idScale, i)).r;
 	    float dist = distance(vpls[i].position, fragPos);
 			int firstBounceVPLI = int(mod(i, int(noOfVPLs / noOfVPLBounces)));
 			Light pl = pls[firstBounceVPLI % noOfLights];

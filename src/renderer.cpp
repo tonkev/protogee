@@ -133,6 +133,9 @@ float cutoffAngle = 0.78f;
 
 unsigned int noOfLights;
 
+unsigned int iWidth;
+unsigned int iHeight;
+
 void renderer::processSDLEvent(SDL_Event event){
   switch(event.type){
 	  case SDL_KEYDOWN:
@@ -500,10 +503,14 @@ bool renderer::init(INIReader config){
 
   noOfVPLS = config.GetInteger("renderer", "noOfVPLs", 1);
   maxVPLGenPerFrame = config.GetInteger("renderer", "maxVPLGenPerFrame", 5);
-  interleavedSamplingSize = config.GetInteger("renderer", "interleavedSamplingSize", 5);
+  interleavedSamplingSize = config.GetInteger("renderer", "interleavedSamplingSize", 5);	
+
+  iWidth = config.GetInteger("renderer", "indirectBufferWidth", 1);	
+  iHeight = config.GetInteger("renderer", "indirectBufferHeight", 1);
+
   glGenTextures(1, &vMasks);
   glBindTexture(GL_TEXTURE_2D_ARRAY, vMasks);
-  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, p_width, p_height, noOfVPLS, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, iWidth, iHeight, noOfVPLS, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -529,10 +536,10 @@ bool renderer::init(INIReader config){
   clPositions = clCreateFromGLTexture(clContext, CL_MEM_READ_WRITE, GL_TEXTURE_2D, 0, gPosition, &clErr);
   //clNormals = clCreateFromGLTexture(clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gNormal, &clErr);
   //clSpeculars = clCreateFromGLTexture(clContext, CL_MEM_READ_ONLY, GL_TEXTURE_2D, 0, gSpecular, &clErr);
-  clRays = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(RR::ray), NULL, NULL);
+  clRays = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * iWidth * iHeight * sizeof(RR::ray), NULL, NULL);
   clVPLs = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * sizeof(Light), NULL, NULL);
   //clIsects = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(RR::Intersection), NULL, NULL);
-  clOcclus = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * p_width * p_height * sizeof(int), NULL, NULL);
+  clOcclus = clCreateBuffer(clContext, CL_MEM_READ_WRITE, noOfVPLS * iWidth * iHeight * sizeof(int), NULL, NULL);
 
   rrRays = RR::CreateFromOpenClBuffer(intersectionApi, clRays);
   //rrIsects = RR::CreateFromOpenClBuffer(intersectionApi, clIsects);
@@ -584,7 +591,7 @@ bool renderer::init(INIReader config){
   glBindFramebuffer(GL_FRAMEBUFFER, iBuffer);
   glGenTextures(1, &iColor);
   glBindTexture(GL_TEXTURE_2D, iColor);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, p_width, p_height, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, iWidth, iHeight, 0, GL_RGB, GL_FLOAT, NULL);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -598,7 +605,7 @@ bool renderer::init(INIReader config){
   
   glGenTextures(1, &discIndirect1);
   glBindTexture(GL_TEXTURE_2D, discIndirect1);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, p_width, p_height, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, iWidth, iHeight, 0, GL_RGB, GL_FLOAT, NULL);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -612,7 +619,7 @@ bool renderer::init(INIReader config){
   
   glGenTextures(1, &discIndirect2);
   glBindTexture(GL_TEXTURE_2D, discIndirect2);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, p_width, p_height, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, iWidth, iHeight, 0, GL_RGB, GL_FLOAT, NULL);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -631,7 +638,7 @@ bool renderer::init(INIReader config){
   viewHistory.reserve(iHistorySize);
   glGenTextures(1, &iHistory);  
   glBindTexture(GL_TEXTURE_2D_ARRAY, iHistory);
-  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB16F, p_width, p_height, iHistorySize, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB16F, iWidth, iHeight, iHistorySize, 0, GL_RGB, GL_FLOAT, NULL);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -653,7 +660,7 @@ bool renderer::init(INIReader config){
     return false;
   }
 
-  size_t global_item_size[3] = {p_width, p_height, noOfVPLS};
+  size_t global_item_size[3] = {iWidth, iHeight, noOfVPLS};
   size_t local_item_size[3] = {1, 1, 1};
   clSetKernelArg(clInitMasksKernel, 0, sizeof(cl_mem), (void *)&clMasks);
   clEnqueueNDRangeKernel(clQueue, clInitMasksKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
@@ -661,7 +668,7 @@ bool renderer::init(INIReader config){
   areaLightChance = config.GetReal("renderer", "AreaLightChance", 0.1f);
   lightRadius = config.GetReal("renderer", "LightRadius", 0.1f);
   noOfVPLBounces = config.GetInteger("renderer", "noOfVPLBounces", 0.1f);
-  
+
   glClearColor(0.f, 0.f, 0.f, 1.0f);
   return true;
 }
@@ -1022,11 +1029,11 @@ void renderer::update(float deltaTime){
 
 	  float realVPP = vpls.size()/(float)(interleavedSamplingSize*interleavedSamplingSize*iHistorySize);
 	  unsigned int vplsPerPixel = realVPP;
-	  size_t global_item_size[3] = {p_width, p_height, vplsPerPixel};
+	  size_t global_item_size[3] = {iWidth, iHeight, vplsPerPixel};
 	  
 	  if(realVPP < 1){
-	  	global_item_size[0] = p_width * realVPP;
-	  	global_item_size[1] = p_height * realVPP;
+	  	global_item_size[0] = iWidth * realVPP;
+	  	global_item_size[1] = iHeight * realVPP;
 	  	global_item_size[2] = 1;
 	  	vplsPerPixel = 1;
 	  }else{
@@ -1041,10 +1048,11 @@ void renderer::update(float deltaTime){
 	  clSetKernelArg(clPreRaysKernel, 2, sizeof(unsigned int), &vplsPerPixel);
 	  clSetKernelArg(clPreRaysKernel, 3, sizeof(float), &realVPP);
 	  clSetKernelArg(clPreRaysKernel, 4, sizeof(unsigned int), &p_width);
-	  clSetKernelArg(clPreRaysKernel, 5, sizeof(unsigned int), &interleavedSamplingSize);
-	  clSetKernelArg(clPreRaysKernel, 6, sizeof(unsigned int), &iHistoryIndex);
-	  clSetKernelArg(clPreRaysKernel, 7, sizeof(unsigned int), &iHistorySize);
-	  clSetKernelArg(clPreRaysKernel, 8, sizeof(cl_mem), (void *)&clRays);
+	  clSetKernelArg(clPreRaysKernel, 5, sizeof(unsigned int), &iWidth);
+	  clSetKernelArg(clPreRaysKernel, 6, sizeof(unsigned int), &interleavedSamplingSize);
+	  clSetKernelArg(clPreRaysKernel, 7, sizeof(unsigned int), &iHistoryIndex);
+	  clSetKernelArg(clPreRaysKernel, 8, sizeof(unsigned int), &iHistorySize);
+	  clSetKernelArg(clPreRaysKernel, 9, sizeof(cl_mem), (void *)&clRays);
 
 	  clEnqueueNDRangeKernel(clQueue, clPreRaysKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
 		  
@@ -1055,11 +1063,12 @@ void renderer::update(float deltaTime){
 	  clSetKernelArg(clPostRaysKernel, 2, sizeof(unsigned int), &vplsPerPixel);
 	  clSetKernelArg(clPostRaysKernel, 3, sizeof(float), &realVPP);
 	  clSetKernelArg(clPostRaysKernel, 4, sizeof(unsigned int), &p_width);
-	  clSetKernelArg(clPostRaysKernel, 5, sizeof(unsigned int), &interleavedSamplingSize);
-	  clSetKernelArg(clPostRaysKernel, 6, sizeof(unsigned int), &iHistoryIndex);
-	  clSetKernelArg(clPostRaysKernel, 7, sizeof(unsigned int), &iHistorySize);
-	  clSetKernelArg(clPostRaysKernel, 8, sizeof(cl_mem), (void *)&clVPLs);
-  	clSetKernelArg(clPostRaysKernel, 9, sizeof(cl_mem), (void *)&clMasks);
+	  clSetKernelArg(clPostRaysKernel, 5, sizeof(unsigned int), &iWidth);
+	  clSetKernelArg(clPostRaysKernel, 6, sizeof(unsigned int), &interleavedSamplingSize);
+	  clSetKernelArg(clPostRaysKernel, 7, sizeof(unsigned int), &iHistoryIndex);
+	  clSetKernelArg(clPostRaysKernel, 8, sizeof(unsigned int), &iHistorySize);
+	  clSetKernelArg(clPostRaysKernel, 9, sizeof(cl_mem), (void *)&clVPLs);
+  	clSetKernelArg(clPostRaysKernel, 10, sizeof(cl_mem), (void *)&clMasks);
 	  	  
 	  clEnqueueNDRangeKernel(clQueue, clPostRaysKernel, 3, NULL, global_item_size, local_item_size, 0, NULL, NULL);
 
@@ -1074,7 +1083,6 @@ void renderer::update(float deltaTime){
 	  glUniform3fv(glGetUniformLocation(iPlaneShader, "viewPos"), 1, &position[0]);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gPosition"), 0);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "gNormal"), 1);
-	  glUniform1i(glGetUniformLocation(iPlaneShader, "gSpecular"), 3);
 		for(int i = 0; i < noOfLights; ++i){
 			glUniform3fv(glGetUniformLocation(iPlaneShader, ("pls[" + std::to_string(i) + "].position").c_str()), 1, &pls[i].position[0]);
 			glUniform3fv(glGetUniformLocation(iPlaneShader, ("pls[" + std::to_string(i) + "].diffuse").c_str()), 1, &pls[i].diffuse[0]);
@@ -1085,6 +1093,7 @@ void renderer::update(float deltaTime){
 	    glUniform3fv(glGetUniformLocation(iPlaneShader, ("vpls[" + std::to_string(i) + "].diffuse").c_str()), 1, &vpls[i].diffuse[0]);
 	    glUniform3fv(glGetUniformLocation(iPlaneShader, ("vpls[" + std::to_string(i) + "].specular").c_str()), 1, &vpls[i].specular[0]);
 	  }
+  	glUniform1f(glGetUniformLocation(iPlaneShader, "idScale"), p_width / (float)iWidth);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "vplMasks"), 4);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "debugVPLI"), debugVPL);
 	  glUniform1i(glGetUniformLocation(iPlaneShader, "noOfVPLs"), vpls.size());
@@ -1096,8 +1105,6 @@ void renderer::update(float deltaTime){
 	  glBindTexture(GL_TEXTURE_2D, gPosition);
 	  glActiveTexture(GL_TEXTURE1);
 	  glBindTexture(GL_TEXTURE_2D, gNormal);
-	  glActiveTexture(GL_TEXTURE3);
-	  glBindTexture(GL_TEXTURE_2D, gSpecular);
 	  glActiveTexture(GL_TEXTURE4);
 	  glBindTexture(GL_TEXTURE_2D_ARRAY, vMasks);
 	  glBindVertexArray(dPlaneVAO);
@@ -1105,6 +1112,7 @@ void renderer::update(float deltaTime){
 
 	  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
 	  glUseProgram(discShader);
+  	glUniform1f(glGetUniformLocation(discShader, "idScale"), p_width / (float)iWidth);
 	  glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
 	  glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
 	  glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
@@ -1127,7 +1135,7 @@ void renderer::update(float deltaTime){
 	  glDrawArrays(GL_TRIANGLES, 0, 6);
 
 	  iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
-	  glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
+	  glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, iWidth, iHeight, 1);
 	  glCopyImageSubData(gPosition, GL_TEXTURE_2D, 0, 0, 0, 0, pHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
 	  viewHistory[iHistoryIndex] = view;
   }
@@ -1139,6 +1147,7 @@ void renderer::update(float deltaTime){
   	glUniformMatrix4fv(glGetUniformLocation(iHistoryShader, ("vHistory[" + std::to_string(i) + "]").c_str()), 1, GL_FALSE, &viewHistory[i][0][0]);
   }
   glUniformMatrix4fv(glGetUniformLocation(iHistoryShader, "projection"), 1, GL_FALSE, &projection[0][0]);
+  glUniform1f(glGetUniformLocation(iHistoryShader, "idScale"), p_width / (float)iWidth);
   glUniform1i(glGetUniformLocation(iHistoryShader, "iHistorySize"), iHistorySize);
   glUniform1i(glGetUniformLocation(iHistoryShader, "iHistoryIndex"), iHistoryIndex);
   glUniform1i(glGetUniformLocation(iHistoryShader, "dEnabled"), directEnabled);

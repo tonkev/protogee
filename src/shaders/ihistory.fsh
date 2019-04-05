@@ -34,11 +34,12 @@ void main(){
 			vec3 pos = texture(pHistory, coords).xyz;
 			if(distance(pos, cpos) < 0.1)
 				col += texture(iHistory, coords).rgb;
+			
 		}
 	}
 	if(dEnabled)
 		col += texture(dColor, TexCoords).rgb;
   col *= texture(gAlbedo, TexCoords).rgb;
-  col = col / (col + vec3(1));	
+  col = col / (col + vec3(1));
 	FragColor = vec4(col, 1);
 }

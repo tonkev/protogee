@@ -29,27 +29,27 @@ __kernel void init_masks(const write_only image2d_array_t vpl_masks){
 	write_imagef(vpl_masks, (int4)(x, y, v, 0), (float4)(0));
 }
 
-__kernel void pre_rays(read_only image2d_t positions, constant light* vpls, const uint vplsPerPixel, const float realVPP, const uint pwidth, const uint iss, const uint ihi, const uint ihs, global ray* rays){
+__kernel void pre_rays(read_only image2d_t positions, constant light* vpls, const uint vplsPerPixel, const float realVPP, const uint pwidth, const uint iwidth, const uint iss, const uint ihi, const uint ihs, global ray* rays){
 	const uint x = get_global_id(0) / realVPP;
 	const uint y = get_global_id(1) / realVPP;
 	const uint v = get_global_id(2);
 	//const uint pv = ihs * (vplsPerPixel * (((y % iss) * iss) + (x % iss)) + v) + ihi;
 	const uint pv = vplsPerPixel * (ihs * (((y % iss) * iss) + (x % iss)) + ihi) + v;
-	const int i = ((y*pwidth + x) * vplsPerPixel) + v;
-	const float3 pos = read_imagef(positions, sampler, (int2)(x, y)).xyz;
+	const int i = ((y*iwidth + x) * vplsPerPixel) + v;
+	const float3 pos = read_imagef(positions, sampler, (int2)(x, y) * (pwidth / (float)iwidth)).xyz;
 	const float3 vpos = vpls[pv].position.xyz;
 	rays[i].o = (float4) (vpos, length(pos - vpos) - 0.001);
 	rays[i].d = (float4) (normalize(pos - vpos), 0.f);
   rays[i].extra.x = 0xFFFFFFFF;
 	rays[i].extra.y = 0xFFFFFFFF;
 }
-__kernel void post_rays(constant ray* rays, constant int* occlus, const uint vplsPerPixel, const float realVPP, const uint pwidth, const uint iss, const uint ihi, const uint ihs, constant light* vpls, const write_only image2d_array_t vpl_masks){
+__kernel void post_rays(constant ray* rays, constant int* occlus, const uint vplsPerPixel, const float realVPP, const uint pwidth, const uint iwidth, const uint iss, const uint ihi, const uint ihs, constant light* vpls, const write_only image2d_array_t vpl_masks){
 	const uint x = get_global_id(0) / realVPP;
 	const uint y = get_global_id(1) / realVPP;
 	const uint v = get_global_id(2);
 	//const uint pv = ihs * (vplsPerPixel * (((y % iss) * iss) + (x % iss)) + v) + ihi;
 	const uint pv = vplsPerPixel * (ihs * (((y % iss) * iss) + (x % iss)) + ihi) + v;
-	const int i = ((y*pwidth + x) * vplsPerPixel) + v;
+	const int i = ((y*iwidth + x) * vplsPerPixel) + v;
 	if(occlus[i] == -1)
 		write_imagef(vpl_masks, (int4)(x, y, pv, 0), (float4)(1));
 	else
