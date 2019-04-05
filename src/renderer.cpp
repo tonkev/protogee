@@ -35,6 +35,7 @@ struct LightExtra{
 	float angle;
 	unsigned int fbo;
 	unsigned int map;
+	glm::mat4 projection;
 };
 
 std::vector<Light> pls;
@@ -45,14 +46,13 @@ std::vector<bool> validVPLs;
 unsigned int p_width;
 unsigned int p_height;
 
-unsigned int dpth_fbo;
 unsigned int dpth_width;
 unsigned int dpth_height;
-unsigned int dpth_cbmp;
 glm::mat4 dpth_prjctn;
 std::vector<glm::mat4> dpth_trnsfrms;
 float dpth_far_plane;
 unsigned int dpth_shader;
+unsigned int dir_dpth_shader;
 
 unsigned int vpl_vao;
 unsigned int vpl_vbo;
@@ -313,7 +313,6 @@ bool renderer::init(INIReader config){
   dpth_height = config.GetInteger("renderer", "shadow_map_size", 1024);
   dpth_far_plane = config.GetReal("renderer", "depth_far_plane", 10);
 	dpth_trnsfrms.reserve(6);
-	dpth_prjctn = glm::perspective(glm::radians(90.0f), dpth_width/(float)dpth_height, 1.0f, dpth_far_plane);
 
 	for(int i = 0; i < noOfLights; ++i){
 		Light pl;
@@ -340,14 +339,24 @@ bool renderer::init(INIReader config){
 		
 		glGenFramebuffers(1, &plex.fbo);
 		glGenTextures(1, &plex.map);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, plex.map);
-		for(unsigned int i = 0; i < 6; ++i)
-		  glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, dpth_width, dpth_height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		
+		if(plex.type == 2){
+			glBindTexture(GL_TEXTURE_2D, plex.map);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, dpth_width, dpth_height, 0,  GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}else{
+			glBindTexture(GL_TEXTURE_CUBE_MAP, plex.map);
+			for(unsigned int i = 0; i < 6; ++i)
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, dpth_width, dpth_height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, plex.fbo);
 		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, plex.map, 0);
@@ -363,6 +372,12 @@ bool renderer::init(INIReader config){
   dpth_shader = initShader("src/shaders/dpth.vsh", "src/shaders/dpth.fsh", "src/shaders/dpth.gsh");
   if(dpth_shader == 0){
     std::cerr << "Failed to initialise dpth shader" << std::endl;
+    return false;
+  }
+
+	dir_dpth_shader = initShader("src/shaders/dir_dpth.vsh", "src/shaders/dir_dpth.fsh");
+  if(dir_dpth_shader == 0){
+    std::cerr << "Failed to initialise dir_dpth shader" << std::endl;
     return false;
   }
 
@@ -655,6 +670,19 @@ RR::IntersectionApi* renderer::getIntersectionApi(){
   return intersectionApi;
 }
 
+float getQuadLightDistance(Light pl, Light vpl){
+	float hyp = glm::distance(pl.position, vpl.position);
+	glm::vec4 dir = glm::normalize(vpl.position - pl.position);
+	float angle = acos(glm::dot(dir, pl.normal));
+	float hypAngle = acos(glm::dot(glm::vec4(0, -1, 0, 0), pl.normal));
+	float distance;
+	if(hypAngle != 0)
+		distance = sin(angle) / sin(hypAngle) * hyp;
+	else
+		distance = cos(angle) * hyp;
+	return distance;
+}
+
 void renderer::update(float deltaTime){
 	float step = lightSpeed * deltaTime;
 	if(i) pls[0].position += step * glm::vec4(0, 1, 0, 0);
@@ -680,17 +708,26 @@ void renderer::update(float deltaTime){
   	
 	  for(int i = 0; i < vpls.size(); ++i){
 			Light pvpl;
+			LightExtra plex;
+			plex.type = 0;
 			if(i > noOfVPLS / noOfVPLBounces)
 				pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
 			else{
 				pvpl = pls[i % noOfLights];
+				plex = plexs[i % noOfLights];
 			}
 	  	Light vpl = vpls[i];
 	  	RR::ray r;
 	  	glm::vec4 diff = vpl.position - pvpl.position;
-	  	r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, glm::length(diff) - rDelta);
-	  	diff = glm::normalize(diff);
-	  	r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
+			if(plex.type == 2){
+				float distance = getQuadLightDistance(pvpl, vpl);
+				r.o = RR::float4(vpl.position.x, vpl.position.y, vpl.position.z, distance);
+				r.d = RR::float3(-pvpl.normal.x, -pvpl.normal.y, -pvpl.normal.z);
+			}else{
+				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, glm::length(diff) - rDelta);
+				diff = glm::normalize(diff);
+				r.d = RR::float4(diff.x, diff.y, diff.z, 0.f);
+			}
 	  	vplRays[i] = r;
 	  }
 	
@@ -711,12 +748,18 @@ void renderer::update(float deltaTime){
 			bool outOfCone = false;
 			if(i < noOfVPLS / noOfVPLBounces){
 				LightExtra plex = plexs[i % noOfLights];
+				Light pl = pls[i % noOfLights];
+				Light vpl = vpls[i];
 				if(plex.type == 1){
-					Light pl = pls[i % noOfLights];
-					Light vpl = vpls[i];
 					glm::vec4 dir = glm::normalize(vpl.position - pl.position);
 					float angle = glm::dot(pl.normal, dir);
 					outOfCone = angle < plex.angle;
+				}else if(plex.type == 2){
+					float distance = getQuadLightDistance(pl, vpl);
+					glm::vec4 samplePos = vpl.position - (pl.normal * distance);
+					float driftX = 	glm::abs(samplePos.x - pl.position.x);
+					float driftY = 	glm::abs(samplePos.z - pl.position.z);
+					outOfCone = driftX > plex.quad.x || driftY > plex.quad.y;
 				}
 			}
 			if(occlus[i] != -1 || outOfCone){
@@ -753,6 +796,7 @@ void renderer::update(float deltaTime){
 					glm::vec3 dir = glm::vec3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
 					glm::vec3 normal = glm::vec3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
 					dir = glm::faceforward(-dir, dir, normal);
+					r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 					r.d = RR::float3(dir.x, dir.y, dir.z);
 			 	}else{
 					LightExtra plex = plexs[currVPL % noOfLights];
@@ -760,14 +804,21 @@ void renderer::update(float deltaTime){
 						hltn = halton(1000 + vplNo, 2);
 						hltn[0] = (plex.angle * (2*hltn[0] - 1)) + acos(pvpl.normal.z);
 						hltn[1] = (plex.angle * (2*hltn[1] - 1)) + atan(pvpl.normal.y / pvpl.normal.x);
+						r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 						r.d.x = sin(hltn[0]) * cos(hltn[1]);
 						r.d.y = sin(hltn[0]) * sin(hltn[1]);
 						r.d.z = cos(hltn[0]);
+					}else if(plex.type == 2){
+						hltn = halton(1000 + vplNo, 2);
+						r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
+						r.o.x += (2*hltn[0] - 1) * plex.quad.x;
+						r.o.z += (2*hltn[1] - 1) * plex.quad.y;
+						r.d = RR::float3(pvpl.normal.x, pvpl.normal.y, pvpl.normal.z);
 					}else{
+						r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 						r.d = RR::float3(2*hltn[0] - 1, 2*hltn[1] - 1, 2*hltn[2] - 1);
 					}
 				}
-				r.o = RR::float4(pvpl.position.x, pvpl.position.y, pvpl.position.z, 1000.f);
 				vplRays[noOfVPLSShot] = r;
 				noOfVPLSShot++;
 			}
@@ -803,9 +854,9 @@ void renderer::update(float deltaTime){
 	        glm::vec4 normal = Model::getNormal(isect.shapeid, isect.primid, isect.uvwt.x, isect.uvwt.y);
 					vpl.normal = normal;
 	        vpl.position = glm::vec4(
-	          pvpl.position.x + (distance * ray.d.x) + (normal.x * rDelta),
-	          pvpl.position.y + (distance * ray.d.y) + (normal.y * rDelta),
-	          pvpl.position.z + (distance * ray.d.z) + (normal.z * rDelta),
+	          ray.o.x + (distance * ray.d.x) + (normal.x * rDelta),
+	          ray.o.y + (distance * ray.d.y) + (normal.y * rDelta),
+	          ray.o.z + (distance * ray.d.z) + (normal.z * rDelta),
 	          1
 	        );
 	        glm::vec4 incident = glm::normalize(pvpl.position - vpl.position);
@@ -845,6 +896,11 @@ void renderer::update(float deltaTime){
 	    	pvpl = vpls[i - (noOfVPLS / noOfVPLBounces)];
 			}else{
 				pvpl = pls[i % noOfLights];
+				LightExtra plex = plexs[i % noOfLights];
+				if(plex.type == 2){
+					float distance = getQuadLightDistance(pvpl, vpls[i]);	
+					pvpl.position = vpls[i].position - (pvpl.normal * distance);
+				}
 			}
 			vpls2.push_back(pvpl);
 			vpls2.push_back(vpls[i]);		
@@ -861,20 +917,24 @@ void renderer::update(float deltaTime){
 		vplUpdated = false;
 	}
 
-  if(directEnabled){
+  if(directEnabled){		
+		glViewport(0, 0, dpth_width, dpth_height);
+		
 		for(int i = 0; i < noOfLights; ++i){
+			glBindFramebuffer(GL_FRAMEBUFFER, plexs[i].fbo);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glEnable(GL_DEPTH_TEST);
+			
 			glm::vec3 plpos = glm::vec3(pls[i].position.x, pls[i].position.y, pls[i].position.z);
+			dpth_prjctn = glm::perspective(glm::radians(90.0f), dpth_width/(float)dpth_height, 1.0f, dpth_far_plane);
+			
 			dpth_trnsfrms[0] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 1, 0, 0), glm::vec3( 0,-1, 0));
 			dpth_trnsfrms[1] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3(-1, 0, 0), glm::vec3( 0,-1, 0));
 			dpth_trnsfrms[2] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 1, 0), glm::vec3( 0, 0, 1));
 			dpth_trnsfrms[3] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0,-1, 0), glm::vec3( 0, 0,-1));
 			dpth_trnsfrms[4] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0, 1), glm::vec3( 0,-1, 0));
 			dpth_trnsfrms[5] = dpth_prjctn * glm::lookAt(plpos, plpos + glm::vec3( 0, 0,-1), glm::vec3( 0,-1, 0));
-
-			glViewport(0, 0, dpth_width, dpth_height);
-			glBindFramebuffer(GL_FRAMEBUFFER, plexs[i].fbo);
-			glClear(GL_DEPTH_BUFFER_BIT);
-			glEnable(GL_DEPTH_TEST);
+		
 			glUseProgram(dpth_shader);
 
 			glUniformMatrix4fv(glGetUniformLocation(dpth_shader, "shadowMatrices[0]"), 1, GL_FALSE, &dpth_trnsfrms[0][0][0]);
@@ -886,6 +946,7 @@ void renderer::update(float deltaTime){
 			glUniform3fv(glGetUniformLocation(dpth_shader, "lightPos"), 1, &pls[i].position[0]);
 			glUniform1f(glGetUniformLocation(dpth_shader, "far_plane"), dpth_far_plane);
 			Model::draw(dpth_shader);
+			
 		}
   }
   glViewport(0, 0, p_width, p_height);
@@ -910,6 +971,12 @@ void renderer::update(float deltaTime){
 				cdBuffer = dBuffer1;
 				cdColor = dColor2;
 			}
+			plexs[i].projection *= glm::mat4(
+				0.5f, 0.0f, 0.0f, 0.0f,
+				0.0f, 0.5f, 0.0f, 0.0f,
+				0.0f, 0.0f, 0.5f, 0.0f,
+				0.5f, 0.5f, 0.5f, 1.0f
+			);
 			glBindFramebuffer(GL_FRAMEBUFFER, cdBuffer);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glDisable(GL_DEPTH_TEST);
@@ -922,13 +989,15 @@ void renderer::update(float deltaTime){
 			glUniform2fv(glGetUniformLocation(dPlaneShader, "lightExtra.quad"), 1, &plexs[i].quad[0]);
 			glUniform1f(glGetUniformLocation(dPlaneShader, "lightExtra.angle"), plexs[i].angle);
 			glUniform3fv(glGetUniformLocation(dPlaneShader, "viewPos"), 1, &position[0]);
+			glUniformMatrix4fv(glGetUniformLocation(dPlaneShader, "dProjection"), 1, GL_FALSE, &plexs[i].projection[0][0]);
 			glUniform1f(glGetUniformLocation(dPlaneShader, "far_plane"), dpth_far_plane);
 			glUniform1i(glGetUniformLocation(dPlaneShader, "pass"), i);
 			glUniform1i(glGetUniformLocation(dPlaneShader, "gPosition"), 0);
 			glUniform1i(glGetUniformLocation(dPlaneShader, "gNormal"), 1);
 			glUniform1i(glGetUniformLocation(dPlaneShader, "gSpecular"), 2);
 	  	glUniform1i(glGetUniformLocation(dPlaneShader, "dColor"), 3);
-	  	glUniform1i(glGetUniformLocation(dPlaneShader, "dMap"), 4);
+	  	glUniform1i(glGetUniformLocation(dPlaneShader, "dCMap"), 4);
+	  	glUniform1i(glGetUniformLocation(dPlaneShader, "dMap"), 5);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, gPosition);
 			glActiveTexture(GL_TEXTURE1);
@@ -939,6 +1008,8 @@ void renderer::update(float deltaTime){
 			glBindTexture(GL_TEXTURE_2D, cdColor);
 			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_CUBE_MAP, plexs[i].map);
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_2D, plexs[i].map);
 			glBindVertexArray(dPlaneVAO);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

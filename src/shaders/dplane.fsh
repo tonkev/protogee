@@ -8,7 +8,9 @@ uniform sampler2D gNormal;
 uniform sampler2D gSpecular;
 uniform sampler2D dColor;
 
-uniform samplerCube dMap;
+uniform samplerCube dCMap;
+uniform sampler2D dMap;
+uniform mat4 dProjection;
 
 struct Light {
   vec3 position;
@@ -52,16 +54,33 @@ void main(){
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
 	vec3 specular = shininess * spec * light.specular;
 	
+	float shadow = 1;
 	vec3 fragToLight = fragPos - light.position;
-	float closestDepth = texture(dMap, fragToLight).r;
+	float closestDepth = texture(dCMap, fragToLight).r;
 	closestDepth *= far_plane;
 	float currentDepth = length(fragToLight);
 	float bias = 0.1;
-	float shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
+	shadow = currentDepth - bias > closestDepth ? 0.0 : 1.0;
 	
 	if(lightExtra.type == 1){
 		float angle = dot(lightDir, -light.normal);
 		if(angle < lightExtra.angle) shadow = 0;
+	}
+	if(lightExtra.type == 2){
+		float hyp = distance(light.position, fragPos);
+		vec3 dir = normalize(fragPos - light.position);
+		float angle = acos(dot(dir, light.normal));
+		float hypAngle = acos(dot(vec3(0, -1, 0), light.normal));
+		float dist;
+		if(hypAngle != 0)
+			dist = sin(angle) / sin(hypAngle) * hyp;
+		else
+			dist = cos(angle) * hyp;
+		vec3 samplePos = fragPos - (light.normal * dist);
+		vec2 drift = abs(samplePos.xz - light.position.xz);
+		if(drift.x > lightExtra.quad.x || drift.y > lightExtra.quad.y || fragPos.y > light.position.y) shadow = 0;
+		else
+			shadow = 1;
 	}
 
 	float dist = distance(light.position, fragPos);
