@@ -707,8 +707,8 @@ void renderer::update(float deltaTime){
 	  if(noOfInvalidVPLs < maxVPLGenPerFrame){
 		  for(int i = 0; i < noOfVPLS / iHistorySize ; ++i){
 		    if(validVPLs[(lihi * noOfVPLS / iHistorySize) + i]){
-					validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
-					noOfInvalidVPLs++;
+					//validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
+					//noOfInvalidVPLs++;
 				}
 		  }
 	  }
@@ -1109,33 +1109,39 @@ void renderer::update(float deltaTime){
 	  glBindTexture(GL_TEXTURE_2D_ARRAY, vMasks);
 	  glBindVertexArray(dPlaneVAO);
 	  glDrawArrays(GL_TRIANGLES, 0, 6);
-
-	  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
-	  glUseProgram(discShader);
-  	glUniform1f(glGetUniformLocation(discShader, "idScale"), p_width / (float)iWidth);
-	  glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
-	  glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
-	  glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
-	  glUniform1i(glGetUniformLocation(discShader, "pass"), 1);
-	  glUniform1i(glGetUniformLocation(discShader, "iss"), interleavedSamplingSize);
-	  glActiveTexture(GL_TEXTURE0);
-	  glBindTexture(GL_TEXTURE_2D, gNormal);
-	  glActiveTexture(GL_TEXTURE1);
-	  glBindTexture(GL_TEXTURE_2D, iColor);
-	  glActiveTexture(GL_TEXTURE2);
-	  glBindTexture(GL_TEXTURE_2D, gPosition);
-	  glBindVertexArray(dPlaneVAO);
-	  glDrawArrays(GL_TRIANGLES, 0, 6);
 	
-	  glBindFramebuffer(GL_FRAMEBUFFER, discBuffer2);
-	  glUniform1i(glGetUniformLocation(discShader, "pass"), 2);
-	  glActiveTexture(GL_TEXTURE1);
-	  glBindTexture(GL_TEXTURE_2D, discIndirect1);
-	  glBindVertexArray(dPlaneVAO);
-	  glDrawArrays(GL_TRIANGLES, 0, 6);
+		if(interleavedSamplingSize > 1){
+			glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
+			glUseProgram(discShader);
+			glUniform1f(glGetUniformLocation(discShader, "idScale"), p_width / (float)iWidth);
+			glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
+			glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
+			glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
+			glUniform1i(glGetUniformLocation(discShader, "pass"), 1);
+			glUniform1i(glGetUniformLocation(discShader, "iss"), interleavedSamplingSize);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, gNormal);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, iColor);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, gPosition);
+			glBindVertexArray(dPlaneVAO);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+	
+			glBindFramebuffer(GL_FRAMEBUFFER, discBuffer2);
+			glUniform1i(glGetUniformLocation(discShader, "pass"), 2);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, discIndirect1);
+			glBindVertexArray(dPlaneVAO);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-	  iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
-	  glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, iWidth, iHeight, 1);
+			iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
+		
+			glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, iWidth, iHeight, 1);
+		}else{
+			iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
+			glCopyImageSubData(iColor, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, iWidth, iHeight, 1);
+		}
 	  glCopyImageSubData(gPosition, GL_TEXTURE_2D, 0, 0, 0, 0, pHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, p_width, p_height, 1);
 	  viewHistory[iHistoryIndex] = view;
   }
