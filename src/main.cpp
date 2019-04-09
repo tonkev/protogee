@@ -1,5 +1,6 @@
 #include <iostream>
 #include <unistd.h>
+#include <fstream>
 #include "INIReader.h"
 #include "interface.h"
 #include "renderer.h"
@@ -7,10 +8,14 @@
 #include "camera.h"
 
 int main(int argc, char** args){
-  if(argc == 2)
-	chdir(args[1]);
+  if(argc >= 2)
+		chdir(args[1]);
   
-  INIReader config("config.ini");
+	std::string configPath = "config.ini";
+	if(argc >= 3)
+		configPath = args[2];
+		
+  INIReader config(configPath.c_str());
   if(config.ParseError()){
     std::cerr << "Failed to parse 'config.ini'" << std::endl;
     return EXIT_FAILURE;
@@ -33,6 +38,17 @@ int main(int argc, char** args){
   }else {
     interface::loop();
   }
+
+	
+	std::string outPath = "timings.txt";
+	if(argc == 4)
+		outPath = args[3];
+
+	std::ofstream file;
+	file.open(outPath.c_str());
+	file << Model::getTimeIntervals();
+	file << renderer::getTimeIntervals();
+	file.close();
 
   Model::destroy();
   renderer::destroy();

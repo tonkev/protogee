@@ -6,6 +6,7 @@
 #include <GL/glew.h>
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
+#include <sstream>
 
 #include "model.h"
 
@@ -58,6 +59,11 @@ RR::matrix dModel;
 RR::matrix dModelInverse;
 unsigned int dModelIndex;
 float dModelTimer = 0;
+
+float bvhConstructionIA = 0;
+float mintervalStart = 0;
+float mintervalEnd = 0;
+unsigned int mnoOfFrames = 0;
 
 RR::IntersectionApi* rIAPI;
 
@@ -318,6 +324,8 @@ void Model::draw(unsigned int shader){
 }
 
 void Model::update(float deltaTime){
+	mintervalStart = SDL_GetTicks();
+
 	dModelTimer += deltaTime;
 	float ratio = fmod(dModelTimer, 20.f)/20;
 	glm::vec3 dModelPos = (dModelPosStart * (1 - ratio)) + (dModelPosEnd * ratio);
@@ -329,6 +337,11 @@ void Model::update(float deltaTime){
 		meshes[i].shape->SetTransform(dModel, dModelInverse);
 	}
 	rIAPI->Commit();
+
+	mintervalEnd = SDL_GetTicks();
+	bvhConstructionIA = ((bvhConstructionIA * mnoOfFrames) + mintervalEnd - mintervalStart) / (mnoOfFrames + 1);
+	mintervalStart = mintervalEnd;
+	mnoOfFrames++;
 }
 
 void Model::destroy(){
@@ -441,4 +454,10 @@ glm::vec4 Model::getNormal(unsigned int mesh_id, unsigned int face_id, float x, 
 		//std::cout << "Model::getNormal : Out of Bounds" << std::endl;
 	}
 	return normal;
+}
+
+std::string Model::getTimeIntervals(){
+	std::stringstream intervals;
+	intervals << "BVH Construction : " << bvhConstructionIA << std::endl;
+	return intervals.str();
 }

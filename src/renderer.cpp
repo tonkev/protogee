@@ -6,6 +6,7 @@
 #include <cmath>
 #include <CL/cl.h>
 #include <CL/cl_gl.h>
+#include <sstream>
 
 #include "model.h"
 #include "renderer.h"
@@ -135,6 +136,21 @@ unsigned int noOfLights;
 
 unsigned int iWidth;
 unsigned int iHeight;
+
+float vplIntersectionIA = 0;
+float vplShootingIA = 0;
+float directShadowIA = 0;
+float gBufferIA = 0;
+float directColorIA = 0;
+float indirectIntersectionIA = 0;
+float indirectColorIA = 0;
+float indirectDiscontinuityIA = 0;
+float indirectReprojectionIA = 0;
+float intervalStart = 0;
+float intervalEnd = 0;
+unsigned int noOfFrames = 0;
+
+std::vector<float> discWeights;
 
 void renderer::processSDLEvent(SDL_Event event){
   switch(event.type){
@@ -486,6 +502,17 @@ bool renderer::init(INIReader config){
     std::cerr << "Failed to initialise Discontinuity shader" << std::endl;
     return false;
   }
+	unsigned int discSize = config.GetInteger("renderer", "discSize", 1);
+	float stdev = config.GetReal("renderer", "discStdev", 1);
+	float totalWeight = 0;
+	for(int i = 0; i < discSize; ++i){
+		float weight = exp(-i*i/(2 * stdev * stdev))/sqrt(2 * stdev * stdev * M_PI);
+		discWeights.push_back(weight);
+		totalWeight += weight;
+	}
+	for(int i = 0; i < discSize; ++i){
+		discWeights[i] *= 1 / totalWeight;
+	}
 
   std::ifstream file;
   file.open("src/kernels/kernel.cl");
@@ -712,6 +739,8 @@ void renderer::update(float deltaTime){
 				}
 		  }
 	  }
+
+		intervalStart = SDL_GetTicks();
   	
 	  for(int i = 0; i < vpls.size(); ++i){
 			Light pvpl;
@@ -781,6 +810,10 @@ void renderer::update(float deltaTime){
 
     intersectionApi->DeleteBuffer(occlu_buffer);
     intersectionApi->DeleteBuffer(ray_buffer);
+
+		intervalEnd = SDL_GetTicks();
+		vplIntersectionIA = ((vplIntersectionIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
 		
 		unsigned int noOfVPLSShot = 0;
 		unsigned int noOfVPLSTried = 0;
@@ -893,6 +926,10 @@ void renderer::update(float deltaTime){
 	    
 			vplUpdated = true;
 	  }
+		
+		intervalEnd = SDL_GetTicks();
+		vplShootingIA = ((vplShootingIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
   }
 
   if(vplDebugEnabled && vplUpdated){
@@ -924,7 +961,7 @@ void renderer::update(float deltaTime){
 		vplUpdated = false;
 	}
 
-  if(directEnabled){		
+  if(directEnabled){
 		glViewport(0, 0, dpth_width, dpth_height);
 		
 		for(int i = 0; i < noOfLights; ++i){
@@ -955,7 +992,13 @@ void renderer::update(float deltaTime){
 			Model::draw(dpth_shader);
 			
 		}
+		
+		glFinish();
+		intervalEnd = SDL_GetTicks();
+		directShadowIA = ((directShadowIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
   }
+
   glViewport(0, 0, p_width, p_height);
   glm::mat4 view = Camera::getViewMatrix();
   glm::vec3 position = Camera::getPosition();
@@ -966,6 +1009,11 @@ void renderer::update(float deltaTime){
   glUniformMatrix4fv(glGetUniformLocation(gBufferShader, "view"), 1, GL_FALSE, &view[0][0]);
   glUniformMatrix4fv(glGetUniformLocation(gBufferShader, "projection"), 1, GL_FALSE, &projection[0][0]);
   Model::draw(gBufferShader);
+	
+	glFinish();
+	intervalEnd = SDL_GetTicks();
+	gBufferIA = ((gBufferIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+	intervalStart = intervalEnd;
 
   if(directEnabled){
 		unsigned int cdBuffer;
@@ -1020,10 +1068,14 @@ void renderer::update(float deltaTime){
 			glBindVertexArray(dPlaneVAO);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
+
+	  glFinish();
+		intervalEnd = SDL_GetTicks();
+		directColorIA = ((directColorIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
   }
 
   if(indirectEnabled && vpls.size() > 0){
-	  glFinish();
 	  clEnqueueAcquireGLObjects(clQueue, 1, &clPositions, 0, 0, NULL);
 	  clEnqueueAcquireGLObjects(clQueue, 1, &clMasks, 0, 0, NULL);
 
@@ -1075,6 +1127,10 @@ void renderer::update(float deltaTime){
 	  clEnqueueReleaseGLObjects(clQueue, 1, &clMasks, 0, 0, NULL);
 	  clEnqueueReleaseGLObjects(clQueue, 1, &clPositions, 0, 0, NULL);
 	  clFinish(clQueue);
+
+		intervalEnd = SDL_GetTicks();
+		indirectIntersectionIA = ((indirectIntersectionIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
 	  
 	  glBindFramebuffer(GL_FRAMEBUFFER, iBuffer);
 	  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1109,11 +1165,19 @@ void renderer::update(float deltaTime){
 	  glBindTexture(GL_TEXTURE_2D_ARRAY, vMasks);
 	  glBindVertexArray(dPlaneVAO);
 	  glDrawArrays(GL_TRIANGLES, 0, 6);
+		
+		glFinish();
+		intervalEnd = SDL_GetTicks();
+		indirectColorIA = ((indirectColorIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+		intervalStart = intervalEnd;
 	
-		if(interleavedSamplingSize > 1){
+		if(discWeights.size() > 1){
 			glBindFramebuffer(GL_FRAMEBUFFER, discBuffer1);
 			glUseProgram(discShader);
+			for(int i = 0; i < discWeights.size(); ++i)
+				glUniform1f(glGetUniformLocation(discShader, ("weight[" + std::to_string(i) + "]").c_str()), discWeights[i]);
 			glUniform1f(glGetUniformLocation(discShader, "idScale"), p_width / (float)iWidth);
+			glUniform1i(glGetUniformLocation(discShader, "noOfWeights"), discWeights.size());
 			glUniform1i(glGetUniformLocation(discShader, "gNormal"), 0);
 			glUniform1i(glGetUniformLocation(discShader, "gIndirect"), 1);
 			glUniform1i(glGetUniformLocation(discShader, "gPosition"), 2);
@@ -1136,6 +1200,11 @@ void renderer::update(float deltaTime){
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			iHistoryIndex = (iHistoryIndex + 1) % iHistorySize;
+
+			glFinish();
+			intervalEnd = SDL_GetTicks();
+			indirectDiscontinuityIA = ((indirectDiscontinuityIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+			intervalStart = intervalEnd;
 		
 			glCopyImageSubData(discIndirect2, GL_TEXTURE_2D, 0, 0, 0, 0, iHistory, GL_TEXTURE_2D_ARRAY, 0, 0, 0, iHistoryIndex, iWidth, iHeight, 1);
 		}else{
@@ -1176,6 +1245,12 @@ void renderer::update(float deltaTime){
   glBindTexture(GL_TEXTURE_2D, gAlbedo);
   glDrawArrays(GL_TRIANGLES, 0, 6);
 
+	glFinish();
+	intervalEnd = SDL_GetTicks();
+	indirectReprojectionIA = ((indirectReprojectionIA * noOfFrames) + intervalEnd - intervalStart) / (noOfFrames + 1);
+	intervalStart = intervalEnd;
+	noOfFrames++;
+
   if(vplDebugEnabled){
 	  glUseProgram(vpl_shader);
 	  glUniformMatrix4fv(glGetUniformLocation(vpl_shader, "model"), 1, GL_FALSE, &Model::getModelMatrix()[0][0]);
@@ -1187,6 +1262,19 @@ void renderer::update(float deltaTime){
   }
 }
 
-void renderer::destroy(){
+std::string renderer::getTimeIntervals(){
+	std::stringstream intervals;
+	intervals << "VPL Intersection Tests : " << vplIntersectionIA << std::endl;
+	intervals << "VPL Shooting : " << vplShootingIA << std::endl;
+	intervals << "Direct Shadow Cubemaps : " << directShadowIA << std::endl;
+	intervals << "G-Buffer : " << gBufferIA << std::endl;
+	intervals << "Direct Shading : " << directColorIA << std::endl;
+	intervals << "Indirect Intersection Tests : " << indirectIntersectionIA << std::endl;
+	intervals << "Indirect Shading : " << indirectColorIA << std::endl;
+	intervals << "Indirect Discontinuity : " << indirectDiscontinuityIA << std::endl;
+	intervals << "Indirect Reprojection : " << indirectReprojectionIA << std::endl;
+	return intervals.str();
+}
 
+void renderer::destroy(){
 }

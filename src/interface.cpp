@@ -14,6 +14,7 @@ int width;
 int height;
 float deltaTime;
 float lastFrame;
+float maxTime = 0;
 
 bool interface::init(INIReader config){
 	if(SDL_Init(SDL_INIT_VIDEO) < 0){
@@ -23,6 +24,7 @@ bool interface::init(INIReader config){
 
   width = config.GetInteger("interface", "width", 480);
   height = config.GetInteger("interface", "height", 320);
+  maxTime = config.GetReal("interface", "time", 0);
 
 	window = SDL_CreateWindow("Protogee", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL);
 	if(window == NULL){
@@ -66,15 +68,19 @@ void interface::loop(){
           online = false;
           break;
       }
-	Camera::processSDLEvent(event);
-	renderer::processSDLEvent(event);
+		Camera::processSDLEvent(event);
+		renderer::processSDLEvent(event);
     }
-	float currentFrame = SDL_GetTicks();
-	deltaTime = (currentFrame - lastFrame) / 1000.0f;
-	lastFrame = currentFrame;
-	Camera::update(deltaTime);
-	Model::update(deltaTime);
-	renderer::update(deltaTime);
+		float currentFrame = SDL_GetTicks();
+		if(maxTime != 0 && currentFrame > maxTime){
+			online = false;
+			break;
+		}
+		deltaTime = (currentFrame - lastFrame) / 1000.0f;
+		lastFrame = currentFrame;
+		Camera::update(deltaTime);
+		Model::update(deltaTime);
+		renderer::update(deltaTime);
     SDL_GL_SwapWindow(window);
   }
 }

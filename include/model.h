@@ -15,6 +15,7 @@ namespace Model{
   glm::vec4 getDiffuse(unsigned int, unsigned int, float, float);
   glm::vec4 getSpecular(unsigned int, unsigned int, float, float);
   glm::vec4 getNormal(unsigned int, unsigned int, float, float);
+	std::string getTimeIntervals();
 }
 
 #endif

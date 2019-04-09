@@ -14,6 +14,7 @@ namespace renderer{
   void processSDLEvent(SDL_Event);
   void update(float);
   void destroy();
+	std::string getTimeIntervals();
 }
 
 #endif

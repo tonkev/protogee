@@ -15,12 +15,13 @@ bool Camera::init(INIReader config){
   speed = config.GetReal("camera", "speed", 2.5f);
 
   position = glm::vec3(0.0f, 0.0f, 3.0f);
+  position.z = config.GetReal("camera", "posX", 0.f);
   position.y = config.GetReal("camera", "posY", 0.f);
   position.z = config.GetReal("camera", "posZ", 0.f);
   front = glm::vec3(0.0f, 0.0f, 1.0f);
   up = glm::vec3(0.0f, 1.0f, 0.0f);
-  yaw = config.GetReal("camera", "yaw", -90.f);
-  pitch = 0.0f;
+  yaw = config.GetReal("camera", "yaw", 0.f);
+  pitch = config.GetReal("camera", "pitch", 0.f);
 
 
 w = false;
