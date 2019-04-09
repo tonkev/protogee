@@ -912,7 +912,10 @@ void renderer::update(float deltaTime){
 					  float attenuation = 1 / (1 + dist * dist);
 					  vpl.diffuse *= attenuation;
 					  vpl.specular *= attenuation;
-	        }
+	        }else{
+						vpl.diffuse *= 10 * noOfVPLBounces / (float)noOfVPLS;
+						vpl.specular *= 10 * noOfVPLBounces / (float)noOfVPLS;
+					}
 		 			vpls[vplIndex] = vpl;
 		 			validVPLs[vplIndex] = true;
 		 			noOfInvalidVPLs--;
