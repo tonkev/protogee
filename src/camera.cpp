@@ -23,7 +23,6 @@ bool Camera::init(INIReader config){
   yaw = config.GetReal("camera", "yaw", 0.f);
   pitch = config.GetReal("camera", "pitch", 0.f);
 
-
 w = false;
 a = false;
 s = false;

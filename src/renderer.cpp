@@ -734,8 +734,8 @@ void renderer::update(float deltaTime){
 	  if(noOfInvalidVPLs < maxVPLGenPerFrame){
 		  for(int i = 0; i < noOfVPLS / iHistorySize ; ++i){
 		    if(validVPLs[(lihi * noOfVPLS / iHistorySize) + i]){
-					//validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
-					//noOfInvalidVPLs++;
+					validVPLs[(lihi * noOfVPLS / iHistorySize) + i] = false;
+					noOfInvalidVPLs++;
 				}
 		  }
 	  }
