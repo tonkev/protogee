@@ -39,7 +39,7 @@ __kernel void pre_rays(read_only image2d_t positions, constant light* vpls, cons
 	const float3 vpos = vpls[pv].position.xyz;
 	rays[i].o = (float4) (vpos, length(pos - vpos) - 0.1);
 	rays[i].d = (float4) (normalize(pos - vpos), 0.f);
-  rays[i].extra.x = 0xFFFFFFFF;
+	rays[i].extra.x = 0xFFFFFFFF;
 	rays[i].extra.y = 0xFFFFFFFF;
 }
 __kernel void post_rays(constant ray* rays, constant int* occlus, const uint vplsPerPixel, const float realVPP, const uint pwidth, const uint iwidth, const uint iss, const uint ihi, const uint ihs, constant light* vpls, const write_only image2d_array_t vpl_masks){
